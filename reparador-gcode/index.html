@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Reparador de G-code</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: bancada de oficina — painel de controle à esquerda, pré-visualização das camadas à direita */
+:root{
+  --bg:#ECEFF1; --panel:#FFFFFF; --ink:#16212B; --muted:#5A6772; --line:#D3DADF; --soft:#F4F6F7;
+  --accent:#0E7466; --accent-ink:#FFFFFF; --accent-soft:#DCEFEC;
+  --good:#2C7A4B; --good-soft:#DFF1E6; --warn:#A46412; --warn-soft:#F8EBD6; --bad:#B8322A; --bad-soft:#F8E0DE;
+  --viewer:#DCE2E6; --lo:#3E6E7C; --hi:#9CC7D2; --cut:#E0A040; --gridc:#B5C0C7;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0E1418; --panel:#162027; --ink:#E4EAEE; --muted:#93A2AC; --line:#283540; --soft:#1B262E;
+  --accent:#3EC0AA; --accent-ink:#04201B; --accent-soft:#163A35;
+  --good:#5DCB8C; --good-soft:#163526; --warn:#E2AA55; --warn-soft:#3A2C14; --bad:#F27A70; --bad-soft:#3E1D1B;
+  --viewer:#10181D; --lo:#2D5560; --hi:#8FC3CF; --cut:#D9973A; --gridc:#2B3943; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0E1418; --panel:#162027; --ink:#E4EAEE; --muted:#93A2AC; --line:#283540; --soft:#1B262E;
+  --accent:#3EC0AA; --accent-ink:#04201B; --accent-soft:#163A35;
+  --good:#5DCB8C; --good-soft:#163526; --warn:#E2AA55; --warn-soft:#3A2C14; --bad:#F27A70; --bad-soft:#3E1D1B;
+  --viewer:#10181D; --lo:#2D5560; --hi:#8FC3CF; --cut:#D9973A; --gridc:#2B3943; color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--panel)}
+.mark{width:34px;height:34px;flex:none}
+.top h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.01em}
+.top p{margin:0;color:var(--muted);font-size:13px}
+.top .spacer{flex:1}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.app{display:grid;grid-template-columns:minmax(300px,410px) minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));align-items:start}
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;font-weight:600}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:16px;display:flex;gap:12px;align-items:center;cursor:pointer;background:var(--soft);transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop svg{flex:none;color:var(--accent)}
+.drop b{display:block;font-weight:600}
+.drop span{color:var(--muted);font-size:12.5px}
+.file{font-family:var(--mono);font-size:12.5px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.file .n{overflow-wrap:anywhere;font-weight:500}
+.file .s{color:var(--muted)}
+.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+a{color:var(--accent)}
+.opts{display:flex;flex-direction:column;gap:9px}
+.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer}
+.chk input{margin:2px 0 0;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.chk small{display:block;color:var(--muted);font-size:12px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mode{position:relative;display:flex;flex-direction:column;gap:3px;border:1.5px solid var(--line);border-radius:8px;padding:10px 11px;cursor:pointer;background:var(--panel)}
+.mode input{position:absolute;opacity:0;pointer-events:none}
+.mode b{font-size:13.5px}
+.mode span{font-size:12px;color:var(--muted);line-height:1.35}
+.mode:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.mode:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.range{display:flex;flex-direction:column;gap:4px}
+.range .row{display:flex;justify-content:space-between;gap:8px}
+.range output{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.range input{width:100%;accent-color:var(--accent)}
+details.printer{border-top:1px solid var(--line);padding-top:10px}
+details.printer summary{cursor:pointer;font-weight:600;font-size:13px}
+.nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.nums label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+.nums input{width:100%;font:500 13px var(--mono);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--soft);color:var(--ink)}
+.nums input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.btn{appearance:none;border:0;border-radius:8px;padding:11px 14px;font:600 14px var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.prog{display:flex;flex-direction:column;gap:6px}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.prog small{color:var(--muted);font-family:var(--mono);font-size:12px}
+.verdict{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-weight:600}
+.verdict.ok{background:var(--good-soft);color:var(--good)}
+.verdict.no{background:var(--bad-soft);color:var(--bad)}
+.verdict small{display:block;font-weight:400;color:var(--ink);opacity:.8;font-size:12.5px}
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+th.num{text-align:right}
+.pill{display:inline-block;min-width:18px;padding:1px 7px;border-radius:999px;font-size:12px}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.dim{color:var(--muted)}
+.log{font-size:12.5px;color:var(--muted);margin:0;padding-left:18px}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+details.where summary{cursor:pointer;font-weight:600;font-size:13px}
+.issues{list-style:none;margin:8px 0 0;padding:0;max-height:240px;overflow:auto;font-size:12.5px;border:1px solid var(--line);border-radius:7px}
+.issues li{display:flex;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line)}
+.issues li:last-child{border-bottom:0}
+.issues .ln{font-family:var(--mono);color:var(--muted);min-width:78px;font-variant-numeric:tabular-nums}
+.issues .bad{color:var(--bad)}
+.issues .warn{color:var(--warn)}
+.viewer{position:sticky;top:16px;background:var(--viewer);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:calc(100vh - 110px);min-height:420px;display:flex;flex-direction:column;min-width:0}
+.vbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--ink);font:500 13px var(--sans);padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.vbar .chk{align-items:center;font-size:13px}
+.vbar .chk input{margin:0}
+.lay{display:flex;align-items:center;gap:8px;font-size:13px;margin-left:auto;min-width:0}
+.lay input{width:150px;accent-color:var(--accent)}
+.lay output{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stage{position:relative;flex:1;min-height:0}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 10px;max-width:calc(100% - 24px)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.hud:empty{display:none}
+.hud{position:absolute;right:12px;top:12px;font-family:var(--mono);font-size:11.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-variant-numeric:tabular-nums;max-width:calc(100% - 24px)}
+.msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .viewer{position:relative;top:0;height:62vh;min-height:360px;order:-1}
+  .lay{margin-left:0;width:100%}
+  .lay input{flex:1;width:auto}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head><body>
+
+<header class="top">
+  <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" fill="var(--accent)"/><path d="M8 11h18M8 17h18M8 23h11" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round"/><path d="m21 22 2.2 2.2L27 20" fill="none" stroke="var(--accent-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div>
+    <h1>Reparador de G-code</h1>
+    <p>Encontra e corrige erros no G-code e entrega um arquivo limpo, pronto para o Creality Print e para a impressora.</p>
+  </div>
+  <div class="spacer"></div>
+  <span class="chip">Tudo roda no seu navegador · nada é enviado</span>
+</header>
+
+<main class="app">
+  <aside class="panel">
+    <section class="card">
+      <h2>1 · Arquivo</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher arquivo G-code">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+        <div><b>Arraste um .gcode aqui</b><span>ou clique para escolher (Creality Print, Orca, Cura…)</span></div>
+      </div>
+      <input type="file" id="fileInput" accept=".gcode,.gco,.g,.nc,text/x-gcode" hidden>
+      <div class="file"><span class="n" id="fileName">—</span><span class="s" id="fileSize"></span></div>
+      <div><button class="link" id="sampleBtn" type="button">Carregar exemplo com falhas</button></div>
+    </section>
+
+    <section class="card">
+      <h2>2 · O que fazer</h2>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="mode" id="modeSolid" value="solid" checked><b>Solidificar</b><span>Reconstrói a peça do G-code como um STL maciço, sem vazios, para fatiar de novo com 100% de preenchimento.</span></label>
+        <label class="mode"><input type="radio" name="mode" id="modeFix" value="fix"><b>Corrigir G-code</b><span>Mantém o G-code e corrige linhas corrompidas, bolhas, temperaturas e final cortado.</span></label>
+      </div>
+      <div class="opts" id="solidOpts">
+        <div class="range">
+          <div class="row"><label for="res">Resolução</label><output id="resOut"></output></div>
+          <input type="range" id="res" min="64" max="320" step="8" value="192">
+        </div>
+        <div class="range">
+          <div class="row"><label for="smooth">Suavização</label><output id="smoothOut"></output></div>
+          <input type="range" id="smooth" min="0" max="8" step="1" value="2">
+        </div>
+        <label class="chk"><input type="checkbox" id="skipAux" checked><span>Ignorar saia, borda e suportes<small>Usa as marcações do fatiador para ficar só com a peça.</small></span></label>
+        <label class="chk"><input type="checkbox" id="removeFragments" checked><span>Remover fragmentos soltos<small>Descarta pedaços minúsculos separados da peça.</small></span></label>
+        <label class="chk"><input type="checkbox" id="simplify" checked><span>Otimizar malha<small>Reduz triângulos em áreas planas sem alterar a forma.</small></span></label>
+      </div>
+      <div class="opts" id="fixOpts" hidden>
+        <label class="chk"><input type="checkbox" id="fixCorrupt" checked><span>Remover linhas corrompidas<small>Apaga comandos ilegíveis, com caracteres estranhos ou números quebrados.</small></span></label>
+        <label class="chk"><input type="checkbox" id="fixBlob" checked><span>Corrigir excesso de extrusão<small>Reduz trechos que empurram filamento demais e criam bolhas e borrões.</small></span></label>
+        <label class="chk"><input type="checkbox" id="fixTemp" checked><span>Corrigir temperaturas fora da faixa<small>Troca valores acima do limite pela temperatura padrão.</small></span></label>
+        <label class="chk"><input type="checkbox" id="fixHeat" checked><span>Aquecer antes de extrudar<small>Insere o aquecimento se o arquivo começa a imprimir com o bico frio.</small></span></label>
+        <label class="chk"><input type="checkbox" id="fixEnd" checked><span>Fechar arquivo cortado<small>Adiciona a finalização segura: desliga aquecimento, sobe o bico e solta os motores.</small></span></label>
+        <label class="chk"><input type="checkbox" id="fixNull" checked><span>Remover movimentos nulos<small>Apaga linhas repetidas que não movem nada.</small></span></label>
+      </div>
+      <details class="printer">
+        <summary>Impressora e temperaturas</summary>
+        <div class="nums">
+          <label>Mesa X (mm)<input type="number" id="bedX" value="220" min="50" max="1000"></label>
+          <label>Mesa Y (mm)<input type="number" id="bedY" value="220" min="50" max="1000"></label>
+          <label>Altura Z (mm)<input type="number" id="bedZ" value="250" min="50" max="1000"></label>
+          <label>Bico máx. (°C)<input type="number" id="maxHot" value="300" min="150" max="500"></label>
+          <label>Mesa máx. (°C)<input type="number" id="maxBed" value="110" min="40" max="150"></label>
+          <span></span>
+          <label>Bico padrão (°C)<input type="number" id="hotT" value="210" min="150" max="350"></label>
+          <label>Mesa padrão (°C)<input type="number" id="bedT" value="60" min="0" max="130"></label>
+        </div>
+      </details>
+      <button class="btn primary" id="runBtn" type="button">Reparar G-code</button>
+      <div class="prog" id="prog" hidden><div class="bar"><i id="barFill"></i></div><small id="progMsg">Preparando…</small></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · Diagnóstico</h2>
+      <div id="verdict"></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Verificação</th><th class="num">Original</th><th class="num">Reparado</th></tr></thead>
+          <tbody id="report"></tbody>
+        </table>
+      </div>
+      <ul class="log" id="log" hidden></ul>
+      <details class="where" id="whereBox" hidden open>
+        <summary>Onde estão os problemas</summary>
+        <ul class="issues" id="issues"></ul>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>4 · Exportar</h2>
+      <button class="btn primary" id="dlBtn" type="button" disabled>Baixar</button>
+      <p class="note" id="dlNote">Processe o arquivo para liberar o download.</p>
+      <p class="note">Tem o STL original da peça? O <a href="https://solido-beta.vercel.app" target="_blank" rel="noopener">Reparador de STL</a> também deixa a peça maciça.</p>
+    </section>
+  </aside>
+
+  <section class="viewer" aria-label="Pré-visualização das camadas">
+    <div class="vbar">
+      <div class="seg" role="group" aria-label="Versão exibida">
+        <button type="button" id="vOrig" aria-pressed="true">Original</button>
+        <button type="button" id="vRep" aria-pressed="false" disabled>Reparado</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="showFaults" checked>Destacar problemas</label>
+      <label class="lay" for="layer">Camada <input type="range" id="layer" min="1" max="1" value="1"><output id="layerOut"></output></label>
+    </div>
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="legend">
+        <span><i style="background:linear-gradient(90deg,var(--lo),var(--hi))"></i>Trajeto de impressão</span>
+        <span><i style="background:var(--cut)"></i>Camada selecionada</span>
+        <span><i style="background:var(--bad)"></i>Erro</span>
+        <span><i style="background:var(--warn)"></i>Aviso</span>
+      </div>
+      <div class="msg" id="viewerMsg" hidden></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script type="text/plain" id="workerSrc">/* Motor de análise e reparo de G-code — roda dentro de um Web Worker */
+'use strict';
+let post=function(){};
+const BADCH=/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F�]/;
+const NUM='[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
+const WORDS=new RegExp('^(?:\\s*[A-Z]\\s*(?:'+NUM+')?)+\\s*$','i');
+const VALUELESS='XYZEABCUVWIJ';
+const FREE=new Set(['M117','M118','M23','M28','M29','M30','M32','M928','M486','M300']);
+const fmt1=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmt2=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function fmtN(v,d){ let s=v.toFixed(d); if(s.indexOf('.')>=0) s=s.replace(/0+$/,'').replace(/\.$/,''); return s==='-0'?'0':s; }
+function replaceVal(code,letter,val){ return code.replace(new RegExp(letter+'\\s*'+NUM,'i'),letter+val); }
+
+function classify(code){
+  const c=code.replace(/^N\d+\s*/i,'').replace(/\*\d+\s*$/,'');
+  if(!c) return {t:'empty'};
+  const m=/^([GMT])\s*(\d+(?:\.\d+)?)/i.exec(c);
+  if(m){
+    const cmd=(m[1]+(+m[2])).toUpperCase();
+    if(FREE.has(cmd)) return {t:'text',cmd,c};
+    if(!WORDS.test(c)) return {t:'bad'};
+    const re=new RegExp('([A-Z])\\s*('+NUM+')?','gi'), W={}; let w;
+    while((w=re.exec(c))){
+      const L=w[1].toUpperCase();
+      if(w[2]===undefined){ if(VALUELESS.indexOf(L)<0) return {t:'bad'}; if(!(L in W)) W[L]=null; }
+      else { const v=+w[2]; if(!isFinite(v)) return {t:'bad'}; if(!(L in W)||W[L]===null) W[L]=v; }
+    }
+    return {t:'g',cmd,W,c};
+  }
+  if(/^[A-Z_][A-Z0-9_]{2,}(\s|$)/i.test(c)&&!/^[A-Z]\d/i.test(c)) return {t:'macro',c,name:c.split(/\s/)[0].toUpperCase()};
+  return {t:'bad'};
+}
+
+/* mode: 'med' (só mede a extrusão típica), 'an' (análise + pré-visualização), 'fix' (gera o arquivo reparado) */
+function scan(text,o,mode,med,p0,p1,msg){
+  const fix=mode==='fix', geo=mode==='an';
+  const lines=text.split(/\r\n|\n|\r/);
+  const endsNL=/[\r\n]$/.test(text);
+  let n=lines.length; if(endsNL||(n&&lines[n-1]==='')) n--;
+  const st={lines:n,corrupt:0,blobs:0,nulls:0,tempBad:0,noHeat:0,truncated:0,layerGaps:0,zDown:0,outBed:0,
+    filament:0,time:0,layers:0,layerH:0,dims:[0,0,0],slicer:'',heatAdded:0,endAdded:0,partial:false};
+  const issues=[]; const iss=(ln,k,m)=>{ if(issues.length<400) issues.push([ln,k,m]); };
+  const out=fix?[]:null;
+  let absXYZ=true, absE=true, x=0,y=0,z=0,e=0,f=1800, eOff=0, retracted=0;
+  let heated=false, extruded=false, endAfter=false, lastWasOut=false, lastRawIdx=-1;
+  const ratios=[]; let rc=0;
+  const mn=[Infinity,Infinity,Infinity], mx=[-Infinity,-Infinity,-Infinity];
+  let lastZ=-Infinity; const layerZ=[], layerLn=[];
+  const seg=geo?[]:null, layerEnds=geo?[]:null, marks=geo?[]:null;
+  const mark=(px,py,pz,t)=>{ if(marks&&marks.length<16000) marks.push(px,py,pz,t); };
+  const bx=o.bedX, by=o.bedY, bz=o.bedZ;
+  const step=Math.max(1,Math.floor(n/40));
+  for(let i=0;i<n;i++){
+    if(i%step===0) post({type:'progress',pct:p0+(p1-p0)*i/n,msg});
+    const raw=lines[i], ln=i+1;
+    const ci=raw.indexOf(';');
+    const head=ci>=0?raw.slice(0,ci):raw;
+    if(ci>=0&&i<300&&!st.slicer){ const g=/(?:generated by|generated with)\s+(.+)/i.exec(raw.slice(ci)); if(g) st.slicer=g[1].trim().slice(0,60); }
+    const code=head.trim();
+    const bad=BADCH.test(head);
+    if(!code&&!bad){ if(fix) out.push(raw); continue; }
+    const cl=bad?{t:'bad'}:classify(code);
+    if(cl.t==='bad'){
+      st.corrupt++; iss(ln,'bad','Linha corrompida'); mark(x,y,z,0);
+      if(fix&&!o.fixCorrupt){ out.push(raw); lastRawIdx=i; }
+      continue;
+    }
+    let outCode=null;
+    if(cl.t==='macro'){
+      const nm=cl.name;
+      if(/START/.test(nm)||/EXTRUDER(_TEMP)?\s*=/i.test(cl.c)) heated=true;
+      if(/END/.test(nm)&&extruded) endAfter=true;
+    } else if(cl.t==='g'){
+      const W=cl.W, c=cl.cmd;
+      const has=k=>(k in W)&&W[k]!==null;
+      if(c==='G90'){ absXYZ=true; absE=true; }
+      else if(c==='G91'){ absXYZ=false; absE=false; }
+      else if(c==='M82') absE=true;
+      else if(c==='M83') absE=false;
+      else if(c==='G92'){
+        const any='X' in W||'Y' in W||'Z' in W||'E' in W;
+        if(!any){ x=y=z=e=0; eOff=0; }
+        if(has('X')) x=W.X; if(has('Y')) y=W.Y; if(has('Z')) z=W.Z;
+        if('E' in W){ e=has('E')?W.E:0; eOff=0; }
+      }
+      else if(c==='G28'){ const any='X' in W||'Y' in W||'Z' in W; if(!any||'X' in W) x=0; if(!any||'Y' in W) y=0; if(!any||'Z' in W) z=0; }
+      else if(c==='M104'||c==='M109'||c==='M140'||c==='M190'){
+        const hot=c==='M104'||c==='M109', k=has('S')?'S':(has('R')?'R':null);
+        if(k){
+          const t=W[k], lim=hot?o.maxHot:o.maxBed;
+          if(hot&&t>0) heated=true;
+          if(t===0&&extruded) endAfter=true;
+          if(t>lim){ st.tempBad++; iss(ln,'bad',(hot?'Temperatura do bico ':'Temperatura da mesa ')+t+' °C'); if(fix&&o.fixTemp) outCode=replaceVal(cl.c,k,hot?o.hotT:o.bedT); }
+        }
+      }
+      else if(c==='M84'||c==='M18'){ if(extruded) endAfter=true; }
+      else if(c==='G0'||c==='G1'||c==='G2'||c==='G3'){
+        const nx=has('X')?(absXYZ?W.X:x+W.X):x, ny=has('Y')?(absXYZ?W.Y:y+W.Y):y, nz=has('Z')?(absXYZ?W.Z:z+W.Z):z;
+        let de=0; if(has('E')) de=absE?W.E-e:W.E;
+        const ne=e+de, sameF=!has('F')||W.F===f;
+        if(has('F')&&W.F>0) f=W.F;
+        let len, arc=null;
+        if((c==='G2'||c==='G3')&&(has('I')||has('J'))){
+          const I=has('I')?W.I:0, J=has('J')?W.J:0, cx=x+I, cy=y+J, r=Math.hypot(I,J);
+          const a0=Math.atan2(y-cy,x-cx), a1=Math.atan2(ny-cy,nx-cx);
+          let da=c==='G2'?a0-a1:a1-a0; if(da<=1e-9) da+=2*Math.PI;
+          len=r*da; arc={cx,cy,r,a0,da:c==='G2'?-da:da};
+        } else len=Math.hypot(nx-x,ny-y);
+        const dz=nz-z;
+        if(len<1e-7&&Math.abs(dz)<1e-7&&Math.abs(de)<1e-9&&sameF){
+          st.nulls++;
+          if(fix&&o.fixNull) continue;
+          if(fix){ out.push(raw); lastRawIdx=i; }
+          continue;
+        }
+        let newDe=de;
+        if(de>1e-9&&len>1e-6){
+          if(!heated){
+            st.noHeat=1; iss(ln,'bad','Começa a extrudar com o bico frio');
+            if(fix&&o.fixHeat){ out.push('; --- Aquecimento adicionado pelo Reparador de G-code ---','M140 S'+o.bedT,'M104 S'+o.hotT,'M190 S'+o.bedT,'M109 S'+o.hotT); st.heatAdded=1; }
+            heated=true;
+          }
+          extruded=true; endAfter=false;
+          const ratio=de/len;
+          if(mode==='med'){ if((rc++&3)===0&&ratios.length<400000) ratios.push(ratio); }
+          else if(med&&ratio>o.blobFactor*med&&de-med*len>0.3){
+            st.blobs++; iss(ln,'bad','Excesso de extrusão ('+fmt1(ratio/med)+'× o normal)'); mark(nx,ny,nz,1);
+            if(fix&&o.fixBlob) newDe=med*len;
+          }
+          st.filament+=newDe; retracted=0;
+          if(nz>lastZ+1e-4||nz<lastZ-0.05){
+            if(nz<lastZ-0.05){ st.zDown++; iss(ln,'warn','Z desceu para '+fmt2(nz)+' mm'); mark(nx,ny,nz,2); }
+            layerZ.push(nz); layerLn.push(ln); if(geo&&layerZ.length>1) layerEnds.push(seg.length/6);
+            lastZ=nz;
+          }
+          if(nx<-2||nx>bx+2||ny<-2||ny>by+2||nz>bz+0.01){
+            if(!lastWasOut){ st.outBed++; iss(ln,'warn','Movimento fora da área da mesa'); mark(nx,ny,nz,2); }
+            lastWasOut=true;
+          } else lastWasOut=false;
+          for(const [px,py,pz] of [[x,y,z],[nx,ny,nz]]){ if(px<mn[0])mn[0]=px; if(py<mn[1])mn[1]=py; if(pz<mn[2])mn[2]=pz; if(px>mx[0])mx[0]=px; if(py>mx[1])mx[1]=py; if(pz>mx[2])mx[2]=pz; }
+          if(geo){
+            if(seg.length>9e6) st.partial=true;
+            else if(arc){
+              const k=Math.max(2,Math.min(48,Math.ceil(len/0.8)));
+              let px=x,py=y,pz=z;
+              for(let j=1;j<=k;j++){
+                const a=arc.a0+arc.da*j/k, qx=j===k?nx:arc.cx+arc.r*Math.cos(a), qy=j===k?ny:arc.cy+arc.r*Math.sin(a), qz=z+dz*j/k;
+                seg.push(px,py,pz,qx,qy,qz); px=qx; py=qy; pz=qz;
+              }
+            } else seg.push(x,y,z,nx,ny,nz);
+          }
+        } else if(de>1e-9){
+          if(de<=retracted+0.05) retracted=Math.max(0,retracted-de);
+          else {
+            const ex=de-retracted;
+            if(extruded&&ex>o.maxPrime&&mode!=='med'){
+              st.blobs++; iss(ln,'bad','Extrusão parada de '+fmt1(ex)+' mm de filamento'); mark(nx,ny,nz,1);
+              if(fix&&o.fixBlob) newDe=retracted;
+            }
+            retracted=0;
+          }
+        } else if(de<-1e-9) retracted-=de;
+        const d3=Math.hypot(len,dz); if(d3>0) st.time+=d3/f*60;
+        if(fix&&has('E')){
+          const red=de-newDe;
+          if(absE){ if(red!==0||eOff!==0) outCode=replaceVal(cl.c,'E',fmtN(W.E-eOff-red,5)); eOff+=red; }
+          else if(red!==0) outCode=replaceVal(cl.c,'E',fmtN(newDe,5));
+        }
+        x=nx; y=ny; z=nz; e=ne;
+      }
+    }
+    if(fix){
+      if(outCode===null){ out.push(raw); lastRawIdx=i; }
+      else { out.push(outCode+(ci>=0?' '+raw.slice(ci):'')); lastRawIdx=-1; }
+    }
+  }
+  if(geo) layerEnds.push(seg.length/6);
+  st.truncated=extruded&&!endAfter?1:0;
+  if(st.truncated) iss(n,'bad','Arquivo termina sem finalização (cortado ou incompleto)');
+  st.layers=layerZ.length;
+  const d=[]; for(let k=1;k<layerZ.length;k++){ const dd=layerZ[k]-layerZ[k-1]; if(dd>0) d.push(dd); }
+  d.sort((a,b)=>a-b);
+  const lh=d.length?d[d.length>>1]:(layerZ[0]||0); st.layerH=lh;
+  for(let k=1;k<layerZ.length;k++){ const dd=layerZ[k]-layerZ[k-1]; if(dd>lh*1.8&&dd-lh>0.1){ st.layerGaps++; iss(layerLn[k],'warn','Salto de '+fmt2(dd)+' mm entre camadas'); } }
+  st.dims=isFinite(mn[0])?[mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]]:[0,0,0];
+  issues.sort((a,b)=>a[0]-b[0]);
+  let medOut=med;
+  if(mode==='med'){ ratios.sort((a,b)=>a-b); medOut=ratios.length?ratios[ratios.length>>1]:0; }
+  if(fix&&o.fixEnd&&st.truncated){
+    if(!endsNL&&lastRawIdx===n-1&&out.length) out.pop();
+    out.push('; --- Finalização adicionada pelo Reparador de G-code ---','M400','G91','G1 E-2 F2700','G90','G1 Z'+fmtN(Math.min(z+10,bz),2)+' F600','M104 S0','M140 S0','M107','M84');
+    st.endAdded=1;
+  }
+  return {stats:st,issues,med:medOut,seg,layerEnds,marks,layerZ,out};
+}
+
+function analyze(text,o,med,p0,p1){
+  const a=scan(text,o,'an',med,p0,p1,'Analisando G-code');
+  return {stats:a.stats,issues:a.issues,med,seg:new Float32Array(a.seg),layerEnds:Int32Array.from(a.layerEnds),marks:new Float32Array(a.marks),layerZ:Float32Array.from(a.layerZ)};
+}
+const bufs=a=>[a.seg.buffer,a.layerEnds.buffer,a.marks.buffer,a.layerZ.buffer];
+
+/* ---------- solidificação: reconstrói a peça maciça a partir dos trajetos de extrusão ---------- */
+const AUX=/skirt|brim|support|prime|wipe|purge|raft/i;
+const OUTER=/outer\s*wall|wall-outer|external perimeter/i;
+function extractPaths(text,o){
+  const lines=text.split(/\r\n|\n|\r/), n=lines.length, S=[], ts=[], O=[];
+  let absXYZ=true,absE=true,x=0,y=0,z=0,e=0,type='',width=0,lastZ=-Infinity,t=0.2,sawType=false,skipped=0;
+  /* contornos da parede externa por camada: fechados para preencher o interior por par-ímpar */
+  let ow=null;
+  const closeOW=()=>{ if(ow){ const d=Math.hypot(ow.ex-ow.sx,ow.ey-ow.sy); if(d>1e-6&&d<2) O.push(ow.ex,ow.ey,ow.sx,ow.sy,ow.z,ow.t); ow=null; } };
+  const A=Math.PI*Math.pow(o.filD/2,2), step=Math.max(1,Math.floor(n/30));
+  for(let i=0;i<n;i++){
+    if(i%step===0) post({type:'progress',pct:25*i/n,msg:'Lendo trajetos'});
+    const raw=lines[i], ci=raw.indexOf(';');
+    if(ci>=0){
+      const cm=raw.slice(ci+1).trim(); let m;
+      if((m=/^TYPE:\s*(.*)$/i.exec(cm))){ type=m[1]; sawType=true; }
+      else if((m=/^WIDTH:\s*([\d.]+)/i.exec(cm))) width=+m[1];
+    }
+    const code=(ci>=0?raw.slice(0,ci):raw).trim();
+    if(!code||BADCH.test(code)) continue;
+    const cl=classify(code); if(cl.t!=='g') continue;
+    const W=cl.W, c=cl.cmd, has=k=>(k in W)&&W[k]!==null;
+    if(c==='G90'){ absXYZ=true; absE=true; }
+    else if(c==='G91'){ absXYZ=false; absE=false; }
+    else if(c==='M82') absE=true;
+    else if(c==='M83') absE=false;
+    else if(c==='G92'){
+      const any='X' in W||'Y' in W||'Z' in W||'E' in W;
+      if(!any){ x=y=z=e=0; }
+      if(has('X')) x=W.X; if(has('Y')) y=W.Y; if(has('Z')) z=W.Z; if('E' in W) e=has('E')?W.E:0;
+    }
+    else if(c==='G28'){ const any='X' in W||'Y' in W||'Z' in W; if(!any||'X' in W) x=0; if(!any||'Y' in W) y=0; if(!any||'Z' in W) z=0; }
+    else if(c==='G0'||c==='G1'||c==='G2'||c==='G3'){
+      const nx=has('X')?(absXYZ?W.X:x+W.X):x, ny=has('Y')?(absXYZ?W.Y:y+W.Y):y, nz=has('Z')?(absXYZ?W.Z:z+W.Z):z;
+      let de=0; if(has('E')) de=absE?W.E-e:W.E;
+      if(de>1e-9){
+        const pts=[[x,y]]; let len;
+        if((c==='G2'||c==='G3')&&(has('I')||has('J'))){
+          const I=has('I')?W.I:0, J=has('J')?W.J:0, cx=x+I, cy=y+J, r=Math.hypot(I,J);
+          const a0=Math.atan2(y-cy,x-cx), a1=Math.atan2(ny-cy,nx-cx);
+          let da=c==='G2'?a0-a1:a1-a0; if(da<=1e-9) da+=2*Math.PI;
+          len=r*da; const k=Math.max(2,Math.min(64,Math.ceil(len/0.5))), sg=c==='G2'?-1:1;
+          for(let j=1;j<k;j++){ const a=a0+sg*da*j/k; pts.push([cx+r*Math.cos(a),cy+r*Math.sin(a)]); }
+        } else len=Math.hypot(nx-x,ny-y);
+        pts.push([nx,ny]);
+        if(len>1e-6){
+          if(o.skipAux&&AUX.test(type)) skipped++;
+          else {
+            if(nz>lastZ+1e-4){ t=lastZ===-Infinity?nz:nz-lastZ; ts.push(t); lastZ=nz; }
+            else if(nz<lastZ-0.05) lastZ=nz;
+            const tt=Math.min(Math.max(t,0.05),1);
+            const w=Math.min(Math.max(width>0?width:de*A/(len*tt),0.2),1.2);
+            for(let j=1;j<pts.length;j++) S.push(pts[j-1][0],pts[j-1][1],pts[j][0],pts[j][1],nz,tt,w);
+            if(OUTER.test(type)){
+              if(ow&&(Math.abs(ow.z-nz)>1e-6||Math.hypot(ow.ex-x,ow.ey-y)>0.05)) closeOW();
+              if(!ow) ow={sx:x,sy:y,ex:x,ey:y,z:nz,t:tt};
+              for(let j=1;j<pts.length;j++) O.push(pts[j-1][0],pts[j-1][1],pts[j][0],pts[j][1],nz,tt);
+              ow.ex=nx; ow.ey=ny;
+            } else closeOW();
+          }
+        }
+      } else if(Math.hypot(nx-x,ny-y)>0.05||Math.abs(nz-z)>1e-6) closeOW();
+      x=nx; y=ny; z=nz; e+=de;
+    }
+  }
+  closeOW();
+  return {S,ts,O,sawType,skipped};
+}
+
+function fieldToMesh(G,nx,ny,nz,ox,oy,oz,hx,hy,hz,p0,p1){
+  const nxy=nx*ny, N=nxy*nz;
+  post({type:'progress',pct:p0,msg:'Preenchendo o interior'});
+  const QS=1<<23, mask=QS-1, Q=new Int32Array(QS); let hd=0, tl=0;
+  G[0]=2; Q[tl++]=0;
+  while(hd!==tl){
+    const idx=Q[hd]; hd=(hd+1)&mask;
+    const x=idx%nx, r=(idx-x)/nx, y=r%ny, z=(r-y)/ny;
+    const nb=[x>0?idx-1:-1, x<nx-1?idx+1:-1, y>0?idx-nx:-1, y<ny-1?idx+nx:-1, z>0?idx-nxy:-1, z<nz-1?idx+nxy:-1];
+    for(let k=0;k<6;k++){ const q=nb[k];
+      if(q>=0&&G[q]===0){ G[q]=2; Q[tl]=q; tl=(tl+1)&mask; if(tl===hd) throw new Error('Memória insuficiente no preenchimento. Reduza a resolução.'); } }
+  }
+  let S=new Uint8Array(N);
+  for(let i=0;i<N;i++) S[i]=G[i]===2?0:255;
+  let T=G;
+  for(let ax=0;ax<3;ax++){
+    const st=ax===0?1:ax===1?nx:nxy, lim=ax===0?nx:ax===1?ny:nz;
+    for(let z=0;z<nz;z++) for(let y=0;y<ny;y++){ const row=nx*y+nxy*z;
+      for(let x=0;x<nx;x++){ const i=row+x, cc=ax===0?x:ax===1?y:z;
+        const l=cc>0?S[i-st]:S[i], rr=cc<lim-1?S[i+st]:S[i];
+        T[i]=(l+2*S[i]+rr+2)>>2; } }
+    const sw=S; S=T; T=sw;
+  }
+  const iso=127.5;
+  const CO=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+  const TETS=[[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]];
+  const offs=CO.map(c=>c[0]+c[1]*nx+c[2]*nxy);
+  const verts=[], tris=[], emap=new Map();
+  const cv=new Float64Array(8), gi=new Float64Array(8);
+  function ev(ka,kb,x,y,z){
+    const i=gi[ka], j=gi[kb], key=i<j?i*N+j:j*N+i;
+    let id=emap.get(key); if(id!==undefined) return id;
+    const t=(iso-cv[ka])/(cv[kb]-cv[ka]);
+    const A=CO[ka],B=CO[kb];
+    id=verts.length/3;
+    verts.push(ox+(x+A[0]+t*(B[0]-A[0])+0.5)*hx, oy+(y+A[1]+t*(B[1]-A[1])+0.5)*hy, oz+(z+A[2]+t*(B[2]-A[2])+0.5)*hz);
+    emap.set(key,id); return id;
+  }
+  function emit(p,q,r,ins,outs){
+    let dx=0,dy=0,dz=0;
+    for(const k of outs){ dx+=CO[k][0]/outs.length; dy+=CO[k][1]/outs.length; dz+=CO[k][2]/outs.length; }
+    for(const k of ins){ dx-=CO[k][0]/ins.length; dy-=CO[k][1]/ins.length; dz-=CO[k][2]/ins.length; }
+    const ux=verts[3*q]-verts[3*p],uy=verts[3*q+1]-verts[3*p+1],uz=verts[3*q+2]-verts[3*p+2];
+    const vx=verts[3*r]-verts[3*p],vy=verts[3*r+1]-verts[3*p+1],vz=verts[3*r+2]-verts[3*p+2];
+    const d=(uy*vz-uz*vy)*dx*hx+(uz*vx-ux*vz)*dy*hy+(ux*vy-uy*vx)*dz*hz;
+    if(d>=0) tris.push(p,q,r); else tris.push(p,r,q);
+  }
+  for(let z=0;z<nz-1;z++){
+    if(z%8===0) post({type:'progress',pct:p0+(p1-p0)*z/nz,msg:'Gerando superfície sólida'});
+    for(let y=0;y<ny-1;y++) for(let x=0;x<nx-1;x++){
+      const base=x+nx*y+nxy*z;
+      let above=0;
+      for(let k=0;k<8;k++){ cv[k]=S[base+offs[k]]; gi[k]=base+offs[k]; if(cv[k]>iso) above++; }
+      if(above===0||above===8) continue;
+      for(const tet of TETS){
+        const ins=[],outs=[];
+        for(const k of tet) (cv[k]>iso?ins:outs).push(k);
+        if(ins.length===0||ins.length===4) continue;
+        if(ins.length===1){ emit(ev(ins[0],outs[0],x,y,z),ev(ins[0],outs[1],x,y,z),ev(ins[0],outs[2],x,y,z),ins,outs); }
+        else if(ins.length===3){ emit(ev(outs[0],ins[0],x,y,z),ev(outs[0],ins[1],x,y,z),ev(outs[0],ins[2],x,y,z),ins,outs); }
+        else{
+          const ac=ev(ins[0],outs[0],x,y,z), ad=ev(ins[0],outs[1],x,y,z), bd=ev(ins[1],outs[1],x,y,z), bc=ev(ins[1],outs[0],x,y,z);
+          emit(ac,ad,bd,ins,outs); emit(ac,bd,bc,ins,outs);
+        }
+      }
+    }
+  }
+  return {V:Float64Array.from(verts),F:Uint32Array.from(tris)};
+}
+
+function UF(n){ const p=new Int32Array(n); for(let i=0;i<n;i++)p[i]=i;
+  const find=i=>{ while(p[i]!==i){ p[i]=p[p[i]]; i=p[i]; } return i; };
+  return {find, union:(a,b)=>{ a=find(a); b=find(b); if(a!==b)p[a]=b; }};
+}
+function buildEdges(F,nv){
+  const m=F.length/3, E=new Map();
+  for(let f=0;f<m;f++) for(let k=0;k<3;k++){
+    const a=F[3*f+k], b=F[3*f+(k+1)%3], key=a<b?a*nv+b:b*nv+a, l=E.get(key);
+    if(l===undefined) E.set(key,[f]); else l.push(f);
+  }
+  return E;
+}
+function components(F,E,m){
+  const uf=UF(m);
+  for(const list of E.values()) for(let i=1;i<list.length;i++) uf.union(list[0],list[i]);
+  const map=new Map();
+  for(let f=0;f<m;f++){ const r=uf.find(f); let a=map.get(r); if(!a){a=[];map.set(r,a);} a.push(f); }
+  return [...map.values()];
+}
+function signedVol(V,F,faces){
+  let s=0;
+  for(const f of faces){
+    const a=3*F[3*f],b=3*F[3*f+1],c=3*F[3*f+2];
+    s+=V[a]*(V[b+1]*V[c+2]-V[b+2]*V[c+1])-V[a+1]*(V[b]*V[c+2]-V[b+2]*V[c])+V[a+2]*(V[b]*V[c+1]-V[b+1]*V[c]);
+  }
+  return s/6;
+}
+function taubin(V,F,iters){
+  if(iters<=0) return;
+  const nv=V.length/3, deg=new Uint32Array(nv+1);
+  for(let i=0;i<F.length;i+=3){ for(let k=0;k<3;k++){ deg[F[i+k]]+=2; } }
+  const start=new Uint32Array(nv+1); for(let i=0;i<nv;i++) start[i+1]=start[i]+deg[i];
+  const fill=start.slice(0,nv), adj=new Uint32Array(start[nv]);
+  for(let i=0;i<F.length;i+=3) for(let k=0;k<3;k++){ const a=F[i+k],b=F[i+(k+1)%3]; adj[fill[a]++]=b; adj[fill[b]++]=a; }
+  const T=new Float64Array(V.length);
+  for(let it=0;it<iters;it++) for(const lam of [0.5,-0.53]){
+    for(let v=0;v<nv;v++){
+      const s=start[v],e=start[v+1]; if(e===s){ T[3*v]=V[3*v];T[3*v+1]=V[3*v+1];T[3*v+2]=V[3*v+2]; continue; }
+      let x=0,y=0,z=0; for(let j=s;j<e;j++){ const u=3*adj[j]; x+=V[u]; y+=V[u+1]; z+=V[u+2]; }
+      const n=e-s;
+      T[3*v]=V[3*v]+lam*(x/n-V[3*v]); T[3*v+1]=V[3*v+1]+lam*(y/n-V[3*v+1]); T[3*v+2]=V[3*v+2]+lam*(z/n-V[3*v+2]);
+    }
+    V.set(T);
+  }
+}
+/* simplificação por métrica quádrica (preserva manifold via condição de link) */
+function simplify(V,F,maxErr){
+  const nv=V.length/3, m=F.length/3;
+  const P=Float64Array.from(V), FF=Int32Array.from(F), alive=new Uint8Array(m).fill(1);
+  const Q=new Float64Array(nv*10), ver=new Int32Array(nv), dead=new Uint8Array(nv);
+  const vf=new Array(nv); for(let i=0;i<nv;i++) vf[i]=[];
+  for(let f=0;f<m;f++){
+    const a=FF[3*f],b=FF[3*f+1],c=FF[3*f+2];
+    vf[a].push(f); vf[b].push(f); vf[c].push(f);
+    const ux=P[3*b]-P[3*a],uy=P[3*b+1]-P[3*a+1],uz=P[3*b+2]-P[3*a+2];
+    const wx=P[3*c]-P[3*a],wy=P[3*c+1]-P[3*a+1],wz=P[3*c+2]-P[3*a+2];
+    let nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx; const l=Math.hypot(nx,ny,nz);
+    if(l<1e-20) continue; const w=l/2; nx/=l; ny/=l; nz/=l;
+    const d=-(nx*P[3*a]+ny*P[3*a+1]+nz*P[3*a+2]);
+    const q=[nx*nx,nx*ny,nx*nz,nx*d,ny*ny,ny*nz,ny*d,nz*nz,nz*d,d*d];
+    for(const v of [a,b,c]) for(let k=0;k<10;k++) Q[10*v+k]+=q[k]*w;
+  }
+  let cap=1<<20, cost=new Float64Array(cap), pos=new Float64Array(cap*3), eu=new Int32Array(cap*4), cnt=0;
+  let heap=new Int32Array(cap), hn=0;
+  function grow(){ cap*=2; const c2=new Float64Array(cap); c2.set(cost); cost=c2; const p2=new Float64Array(cap*3); p2.set(pos); pos=p2;
+    const e2=new Int32Array(cap*4); e2.set(eu); eu=e2; const h2=new Int32Array(cap); h2.set(heap); heap=h2; }
+  function hpush(id){ let i=hn++; heap[i]=id; while(i>0){ const p=(i-1)>>1; if(cost[heap[p]]<=cost[heap[i]])break; const t=heap[p];heap[p]=heap[i];heap[i]=t; i=p; } }
+  function hpop(){ const top=heap[0]; heap[0]=heap[--hn]; let i=0;
+    for(;;){ const l=2*i+1,r=l+1; let s=i; if(l<hn&&cost[heap[l]]<cost[heap[s]])s=l; if(r<hn&&cost[heap[r]]<cost[heap[s]])s=r; if(s===i)break; const t=heap[s];heap[s]=heap[i];heap[i]=t; i=s; }
+    return top; }
+  const q=new Float64Array(10);
+  function qerr(x,y,z){ return q[0]*x*x+2*q[1]*x*y+2*q[2]*x*z+2*q[3]*x+q[4]*y*y+2*q[5]*y*z+2*q[6]*y+q[7]*z*z+2*q[8]*z+q[9]; }
+  function pushEdge(u,v){
+    for(let k=0;k<10;k++) q[k]=Q[10*u+k]+Q[10*v+k];
+    const a=q[0],b=q[1],c=q[2],d=q[4],e=q[5],f=q[7];
+    const det=a*(d*f-e*e)-b*(b*f-c*e)+c*(b*e-c*d);
+    let x,y,z,best;
+    const mx=(P[3*u]+P[3*v])/2,my=(P[3*u+1]+P[3*v+1])/2,mz=(P[3*u+2]+P[3*v+2])/2;
+    if(Math.abs(det)>1e-12){
+      const r0=-q[3],r1=-q[6],r2=-q[8];
+      x=(r0*(d*f-e*e)-b*(r1*f-e*r2)+c*(r1*e-d*r2))/det;
+      y=(a*(r1*f-e*r2)-r0*(b*f-c*e)+c*(b*r2-r1*c))/det;
+      z=(a*(d*r2-r1*e)-b*(b*r2-r1*c)+r0*(b*e-c*d))/det;
+      const el=Math.hypot(P[3*u]-P[3*v],P[3*u+1]-P[3*v+1],P[3*u+2]-P[3*v+2]);
+      if(Math.hypot(x-mx,y-my,z-mz)>2*el){ x=mx;y=my;z=mz; }
+      best=qerr(x,y,z);
+    } else { best=Infinity; }
+    for(const [px,py,pz] of [[P[3*u],P[3*u+1],P[3*u+2]],[P[3*v],P[3*v+1],P[3*v+2]],[mx,my,mz]]){
+      const e2=qerr(px,py,pz); if(e2<best){best=e2;x=px;y=py;z=pz;} }
+    if(cnt>=cap) grow();
+    const id=cnt++; cost[id]=Math.max(0,best); pos[3*id]=x;pos[3*id+1]=y;pos[3*id+2]=z;
+    eu[4*id]=u;eu[4*id+1]=v;eu[4*id+2]=ver[u];eu[4*id+3]=ver[v];
+    hpush(id);
+  }
+  for(let f=0;f<m;f++) for(let k=0;k<3;k++){ const a=FF[3*f+k],b=FF[3*f+(k+1)%3]; if(a<b) pushEdge(a,b); }
+  const markN=new Int32Array(nv).fill(-1); let stamp=0;
+  function flipOK(w,other,x,y,z){
+    for(const f of vf[w]){ if(!alive[f]) continue;
+      const a=FF[3*f],b=FF[3*f+1],c=FF[3*f+2];
+      if(a===other||b===other||c===other) continue;
+      const pa=a===w?[x,y,z]:[P[3*a],P[3*a+1],P[3*a+2]], pb=b===w?[x,y,z]:[P[3*b],P[3*b+1],P[3*b+2]], pc=c===w?[x,y,z]:[P[3*c],P[3*c+1],P[3*c+2]];
+      const o1x=P[3*b]-P[3*a],o1y=P[3*b+1]-P[3*a+1],o1z=P[3*b+2]-P[3*a+2], o2x=P[3*c]-P[3*a],o2y=P[3*c+1]-P[3*a+1],o2z=P[3*c+2]-P[3*a+2];
+      const onx=o1y*o2z-o1z*o2y, ony=o1z*o2x-o1x*o2z, onz=o1x*o2y-o1y*o2x;
+      const n1x=pb[0]-pa[0],n1y=pb[1]-pa[1],n1z=pb[2]-pa[2], n2x=pc[0]-pa[0],n2y=pc[1]-pa[1],n2z=pc[2]-pa[2];
+      const nnx=n1y*n2z-n1z*n2y, nny=n1z*n2x-n1x*n2z, nnz=n1x*n2y-n1y*n2x;
+      const ln=Math.hypot(nnx,nny,nnz), lo=Math.hypot(onx,ony,onz);
+      if(ln<1e-14) return false;
+      if(onx*nnx+ony*nny+onz*nnz < 0.5*ln*lo) return false;
+    }
+    return true;
+  }
+  while(hn>0){
+    const id=hpop();
+    if(cost[id]>maxErr) break;
+    const u=eu[4*id], v=eu[4*id+1];
+    if(dead[u]||dead[v]||ver[u]!==eu[4*id+2]||ver[v]!==eu[4*id+3]) continue;
+    stamp++;
+    for(const f of vf[u]) if(alive[f]) for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==u) markN[w]=stamp; }
+    let common=0, shared=0, valU=0, valV=0;
+    for(const f of vf[u]) if(alive[f]) valU++;
+    for(const f of vf[v]) if(alive[f]){
+      valV++;
+      let hasU=false; for(let k=0;k<3;k++) if(FF[3*f+k]===u) hasU=true;
+      if(hasU) shared++;
+      for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==v&&w!==u&&markN[w]===stamp){ markN[w]=-2-stamp; common++; } }
+    }
+    if(shared!==2||common!==2||valU+valV-4>14) continue;
+    const x=pos[3*id],y=pos[3*id+1],z=pos[3*id+2];
+    if(!flipOK(u,v,x,y,z)||!flipOK(v,u,x,y,z)) continue;
+    for(const f of vf[v]){ if(!alive[f]) continue;
+      let hasU=false; for(let k=0;k<3;k++) if(FF[3*f+k]===u) hasU=true;
+      if(hasU){ alive[f]=0; continue; }
+      for(let k=0;k<3;k++) if(FF[3*f+k]===v) FF[3*f+k]=u;
+      vf[u].push(f);
+    }
+    vf[u]=vf[u].filter(f=>alive[f]); vf[v]=[];
+    for(let k=0;k<10;k++) Q[10*u+k]+=Q[10*v+k];
+    P[3*u]=x;P[3*u+1]=y;P[3*u+2]=z; ver[u]++; dead[v]=1;
+    stamp++; const nb=[];
+    for(const f of vf[u]) for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==u&&markN[w]!==stamp){ markN[w]=stamp; nb.push(w); } }
+    for(const w of nb) pushEdge(Math.min(u,w),Math.max(u,w));
+  }
+  const remap=new Int32Array(nv).fill(-1), outV=[], outF=[];
+  for(let f=0;f<m;f++){ if(!alive[f]) continue;
+    for(let k=0;k<3;k++){ const v=FF[3*f+k]; if(remap[v]<0){ remap[v]=outV.length/3; outV.push(P[3*v],P[3*v+1],P[3*v+2]); } outF.push(remap[v]); } }
+  return {V:Float64Array.from(outV),F:Uint32Array.from(outF)};
+}
+
+function solidFromGcode(text,o){
+  const {S,ts,O,sawType,skipped}=extractPaths(text,o);
+  const ns=S.length/7;
+  if(!ns) throw new Error('Não encontrei trajetos de impressão neste G-code.');
+  ts.sort((a,b)=>a-b);
+  const lh=ts.length?Math.min(Math.max(ts[ts.length>>1],0.05),1):0.2;
+  let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity,wmax=0;
+  for(let i=0;i<S.length;i+=7){
+    const w=S[i+6]/2;
+    x0=Math.min(x0,S[i]-w,S[i+2]-w); x1=Math.max(x1,S[i]+w,S[i+2]+w);
+    y0=Math.min(y0,S[i+1]-w,S[i+3]-w); y1=Math.max(y1,S[i+1]+w,S[i+3]+w);
+    z0=Math.min(z0,S[i+4]-S[i+5]); z1=Math.max(z1,S[i+4]); wmax=Math.max(wmax,S[i+6]);
+  }
+  let hxy=Math.max(Math.max(x1-x0,y1-y0)/o.res,0.05), hz=lh;
+  const pad=2;
+  let nx,ny,nz;
+  for(;;){
+    const r=Math.max(wmax/2,0.6*hxy);
+    nx=Math.ceil((x1-x0+2*r)/hxy)+2*pad+1; ny=Math.ceil((y1-y0+2*r)/hxy)+2*pad+1; nz=Math.ceil((z1-z0)/hz)+2*pad+1;
+    if(nx*ny*nz<=50e6) break;
+    if(hxy<hz*4) hxy*=1.15; else hz*=1.5;
+  }
+  const rmin=0.6*hxy, ox=x0-rmin-pad*hxy, oy=y0-rmin-pad*hxy, oz=z0-pad*hz, nxy=nx*ny;
+  const G=new Uint8Array(nxy*nz);
+  const sstep=Math.max(1,Math.floor(ns/40));
+  for(let s=0;s<ns;s++){
+    if(s%sstep===0) post({type:'progress',pct:25+25*s/ns,msg:'Montando o volume da peça'});
+    const i=7*s, ax=S[i],ay=S[i+1],bx=S[i+2],by=S[i+3],z=S[i+4],t=S[i+5],r=Math.max(S[i+6]/2,rmin), r2=r*r;
+    let iz0=Math.ceil((z-t-oz)/hz-0.5+1e-6), iz1=Math.floor((z-oz)/hz-0.5+1e-6);
+    if(iz1<iz0){ iz0=iz1=Math.floor((z-t/2-oz)/hz); }
+    iz0=Math.max(0,iz0); iz1=Math.min(nz-1,iz1);
+    const L=Math.hypot(bx-ax,by-ay), k=Math.max(1,Math.ceil(L/(hxy*0.5)));
+    for(let j=0;j<=k;j++){
+      const px=ax+(bx-ax)*j/k, py=ay+(by-ay)*j/k;
+      const ix0=Math.max(0,Math.ceil((px-r-ox)/hxy-0.5)), ix1=Math.min(nx-1,Math.floor((px+r-ox)/hxy-0.5));
+      const jy0=Math.max(0,Math.ceil((py-r-oy)/hxy-0.5)), jy1=Math.min(ny-1,Math.floor((py+r-oy)/hxy-0.5));
+      for(let iy=jy0;iy<=jy1;iy++){ const cy=oy+(iy+0.5)*hxy-py;
+        for(let ix=ix0;ix<=ix1;ix++){ const cx=ox+(ix+0.5)*hxy-px; if(cx*cx+cy*cy>r2) continue;
+          const b=ix+nx*iy; for(let iz=iz0;iz<=iz1;iz++) G[b+nxy*iz]=1; } }
+    }
+  }
+  /* interior: dentro de um número ímpar de contornos externos = peça (furos ficam vazios) */
+  const no=O.length/6, rows=new Array(ny), touched=[];
+  for(let a=0;a<no;){
+    let b=a; const zl=O[6*a+4]; while(b<no&&Math.abs(O[6*b+4]-zl)<1e-6) b++;
+    const t=O[6*a+5];
+    let iz0=Math.ceil((zl-t-oz)/hz-0.5+1e-6), iz1=Math.floor((zl-oz)/hz-0.5+1e-6);
+    if(iz1<iz0){ iz0=iz1=Math.floor((zl-t/2-oz)/hz); }
+    iz0=Math.max(0,iz0); iz1=Math.min(nz-1,iz1);
+    for(let s=a;s<b;s++){
+      const ax=O[6*s],ay=O[6*s+1],bx=O[6*s+2],by=O[6*s+3];
+      if(ay===by) continue;
+      const r0=Math.max(0,Math.ceil((Math.min(ay,by)-oy)/hxy-0.5)), r1=Math.min(ny-1,Math.floor((Math.max(ay,by)-oy)/hxy-0.5));
+      for(let iy=r0;iy<=r1;iy++){
+        const yc=oy+(iy+0.5)*hxy;
+        if((ay<=yc)===(by<=yc)) continue;
+        if(!rows[iy]){ rows[iy]=[]; touched.push(iy); }
+        rows[iy].push(ax+(yc-ay)*(bx-ax)/(by-ay));
+      }
+    }
+    for(const iy of touched){
+      const xs=rows[iy].sort((p,q)=>p-q);
+      for(let k=0;k+1<xs.length;k+=2){
+        const ix0=Math.max(0,Math.ceil((xs[k]-ox)/hxy-0.5)), ix1=Math.min(nx-1,Math.floor((xs[k+1]-ox)/hxy-0.5));
+        for(let ix=ix0;ix<=ix1;ix++){ const c=ix+nx*iy; for(let iz=iz0;iz<=iz1;iz++) G[c+nxy*iz]=1; }
+      }
+      rows[iy]=null;
+    }
+    touched.length=0;
+    a=b;
+  }
+  const r=fieldToMesh(G,nx,ny,nz,ox,oy,oz,hxy,hxy,hz,50,85);
+  let V=r.V, F=r.F, removed=0;
+  if(o.removeFragments&&F.length){
+    post({type:'progress',pct:86,msg:'Removendo fragmentos'});
+    const comps=components(F,buildEdges(F,V.length/3),F.length/3);
+    if(comps.length>1){
+      const vols=comps.map(c=>Math.abs(signedVol(V,F,c))), mx=Math.max(...vols), keep=[];
+      comps.forEach((c,i)=>{ if(vols[i]<mx*0.01){ removed++; return; } for(const f of c) keep.push(F[3*f],F[3*f+1],F[3*f+2]); });
+      F=Uint32Array.from(keep);
+    }
+  }
+  post({type:'progress',pct:88,msg:'Suavizando'});
+  taubin(V,F,o.smooth);
+  if(o.simplify){
+    post({type:'progress',pct:91,msg:'Otimizando malha'});
+    const h=Math.min(hxy,hz), s=simplify(V,F,Math.pow(0.1*h,2)); V=s.V; F=s.F;
+  }
+  post({type:'progress',pct:97,msg:'Finalizando'});
+  const soup=new Float32Array(F.length*3);
+  for(let i=0;i<F.length;i++){ const v=3*F[i]; soup[3*i]=V[v]; soup[3*i+1]=V[v+1]; soup[3*i+2]=V[v+2]; }
+  let vol=0; const all=[]; for(let f=0;f<F.length/3;f++) all.push(f); vol=signedVol(V,F,all);
+  let b0=[Infinity,Infinity,Infinity], b1=[-Infinity,-Infinity,-Infinity];
+  for(let i=0;i<soup.length;i+=3) for(let k=0;k<3;k++){ const v=soup[i+k]; if(v<b0[k])b0[k]=v; if(v>b1[k])b1[k]=v; }
+  return {soup,stats:{tris:soup.length/9,volume:Math.abs(vol),dims:[b1[0]-b0[0],b1[1]-b0[1],b1[2]-b0[2]],hxy,hz,removed,sawType,skipped}};
+}
+
+if(typeof self!=='undefined'&&typeof self.postMessage==='function'&&typeof window==='undefined'){
+  post=m=>self.postMessage(m);
+  self.onmessage=ev=>{
+    const d=ev.data;
+    try{
+      const text=new TextDecoder('utf-8').decode(new Uint8Array(d.buf));
+      if(d.cmd==='analyze'){
+        const med=scan(text,d.opts,'med',0,0,30,'Medindo a extrusão').med;
+        const an=analyze(text,d.opts,med,30,100);
+        self.postMessage({type:'analyzed',id:d.id,analysis:an},bufs(an));
+      } else if(d.cmd==='repair'){
+        const r=scan(text,d.opts,'fix',d.med,0,55,'Corrigindo G-code');
+        const outText=r.out.join('\n')+'\n';
+        const an=analyze(outText,d.opts,d.med,55,100);
+        an.stats.heatAdded=r.stats.heatAdded; an.stats.endAdded=r.stats.endAdded;
+        const bytes=new TextEncoder().encode(outText);
+        self.postMessage({type:'repaired',id:d.id,bytes,analysis:an},[bytes.buffer].concat(bufs(an)));
+      } else if(d.cmd==='solid'){
+        const r=solidFromGcode(text,d.opts);
+        self.postMessage({type:'solid',id:d.id,soup:r.soup,stats:r.stats},[r.soup.buffer]);
+      }
+    }catch(err){ self.postMessage({type:'error',id:d.id,message:String(err&&err.message||err)}); }
+  };
+}
+</script>
+<script>/* G-code de exemplo com falhas: cubo de 20 mm com temperatura absurda, linhas corrompidas, movimentos repetidos, bolha de extrusão, camadas faltando e final cortado */
+function makeSampleGcode(){
+  const L=[], p=s=>L.push(s), f3=v=>String(+v.toFixed(3)), f5=v=>String(+v.toFixed(5));
+  p('; generated by Creality Print (exemplo do Reparador de G-code, com falhas de propósito)');
+  p('M140 S60'); p('M104 S380'); p('G28'); p('M190 S60'); p('M109 S380');
+  p('G90'); p('M83'); p('G92 E0');
+  const lh=0.2, W=0.42, S=20, ox=100, oy=100, k=W*lh/(Math.PI*0.875*0.875);
+  for(let li=0;li<60;li++){
+    if(li===31||li===32) continue;
+    const z=lh*(li+1);
+    p(';LAYER_CHANGE'); p(';Z:'+f3(z)); p('G1 Z'+f3(z)+' F600');
+    for(let w=0;w<2;w++){
+      const d=W/2+w*W, a=ox+d, b=ox+S-d, c=oy+d, e=oy+S-d;
+      const pts=[[a,c],[b,c],[b,e],[a,e],[a,c]];
+      p(';TYPE:'+(w?'Inner wall':'Outer wall'));
+      p('G0 X'+f3(a)+' Y'+f3(c)+' F9000');
+      if(li===8&&w===0){ p('G0 X'+f3(a)+' Y'+f3(c)+' F9000'); p('G0 X'+f3(a)+' Y'+f3(c)+' F9000'); }
+      p('G1 E0.8 F2400');
+      for(let q=1;q<5;q++){
+        const len=Math.hypot(pts[q][0]-pts[q-1][0],pts[q][1]-pts[q-1][1]);
+        let ex=len*k; if(li===40&&w===0&&q===2) ex*=10;
+        p('G1 X'+f3(pts[q][0])+' Y'+f3(pts[q][1])+' E'+f5(ex)+' F1800');
+      }
+      p('G1 E-0.8 F2400');
+      if(li===15&&w===1){ p('G1 X1Ã§0.4 Y\u0000\u0003 E0.42'); p('G1 X105.2.4 Y110 E0.3'); }
+    }
+    p(';TYPE:Sparse infill');
+    const lo=ox+2*W+W/2, hi=ox+S-2*W-W/2, vert=li%2===0, P=(u,v)=>vert?[u,v]:[v,u];
+    let t=lo+0.8, fwd=true, cur=P(t,lo);
+    p('G0 X'+f3(cur[0])+' Y'+f3(cur[1])+' F9000'); p('G1 E0.8 F2400');
+    while(t<hi){
+      const end=P(t,fwd?hi:lo);
+      p('G1 X'+f3(end[0])+' Y'+f3(end[1])+' E'+f5(Math.hypot(end[0]-cur[0],end[1]-cur[1])*k)+' F3000'); cur=end;
+      const nt=t+2.4; if(nt>=hi) break;
+      const nx=P(nt,fwd?hi:lo);
+      p('G1 X'+f3(nx[0])+' Y'+f3(nx[1])+' E'+f5(Math.hypot(nx[0]-cur[0],nx[1]-cur[1])*k)); cur=nx;
+      t=nt; fwd=!fwd;
+    }
+    p('G1 E-0.8 F2400');
+  }
+  p('G0 X108.4 Y1');
+  return L.join('\n');
+}
+</script>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const state={name:'',buf:null,an:null,med:0,rep:null,repAn:null,solid:null,result:null,log:null,view:'orig',busy:false};
+
+/* ---------- worker ---------- */
+let worker=null, jobId=0; const pending=new Map();
+try{
+  const url=URL.createObjectURL(new Blob([$('workerSrc').textContent],{type:'text/javascript'}));
+  worker=new Worker(url);
+  worker.onmessage=e=>{
+    const d=e.data;
+    if(d.type==='progress'){ setProgress(d.pct,d.msg); return; }
+    const p=pending.get(d.id); if(!p) return; pending.delete(d.id);
+    if(d.type==='error') p.reject(new Error(d.message)); else p.resolve(d);
+  };
+  worker.onerror=e=>{ for(const p of pending.values()) p.reject(new Error(e.message||'Falha no processamento')); pending.clear(); };
+}catch(err){ worker=null; }
+function run(cmd,buf,extra){
+  return new Promise((resolve,reject)=>{
+    if(!worker){ reject(new Error('Seu navegador bloqueou o processamento em segundo plano.')); return; }
+    const id=++jobId; pending.set(id,{resolve,reject});
+    const copy=buf.slice(0);
+    worker.postMessage(Object.assign({cmd,id,buf:copy},extra),[copy]);
+  });
+}
+
+/* ---------- interface ---------- */
+const fmtInt=n=>Math.round(n).toLocaleString('pt-BR');
+const fmt1=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmt2=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtTime=s=>{ const m=Math.round(s/60); return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min'; };
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t){ const el=$('toast'); el.textContent=t; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,3800); }
+function setProgress(p,m){ $('barFill').style.width=Math.max(2,Math.min(100,p))+'%'; $('progMsg').textContent=m+'…'; }
+function num(id,def){ const v=parseFloat($(id).value); return isFinite(v)?v:def; }
+function opts(){
+  return {fixCorrupt:$('fixCorrupt').checked,fixBlob:$('fixBlob').checked,fixTemp:$('fixTemp').checked,fixHeat:$('fixHeat').checked,
+    fixEnd:$('fixEnd').checked,fixNull:$('fixNull').checked,
+    bedX:num('bedX',220),bedY:num('bedY',220),bedZ:num('bedZ',250),maxHot:num('maxHot',300),maxBed:num('maxBed',110),
+    hotT:num('hotT',210),bedT:num('bedT',60),blobFactor:3,maxPrime:3,
+    mode:$('modeSolid').checked?'solid':'fix',res:+$('res').value,smooth:+$('smooth').value,
+    skipAux:$('skipAux').checked,removeFragments:$('removeFragments').checked,simplify:$('simplify').checked,filD:1.75};
+}
+function updateMode(){
+  const solid=$('modeSolid').checked;
+  $('solidOpts').hidden=!solid; $('fixOpts').hidden=solid;
+  $('runBtn').textContent=solid?'Gerar STL sólido':'Reparar G-code';
+  $('dlBtn').textContent=state.result==='stl'?'Baixar STL sólido':state.result==='gcode'?'Baixar G-code reparado':(solid?'Baixar STL sólido':'Baixar G-code reparado');
+  const r=+$('res').value, s=+$('smooth').value;
+  $('resOut').textContent=state.an&&state.an.stats.dims[0]?`${r} · voxel ${fmt2(Math.max(state.an.stats.dims[0],state.an.stats.dims[1])/r)} mm`:String(r);
+  $('smoothOut').textContent=s===0?'desligada':s+' passada'+(s>1?'s':'');
+}
+function clearResult(note){
+  state.rep=null; state.repAn=null; state.solid=null; state.result=null; state.log=null;
+  $('vRep').disabled=true; $('dlBtn').disabled=true; setView('orig',true);
+  $('dlNote').textContent=note||'Processe o arquivo para liberar o download.';
+  updateMode();
+}
+function toSTL(soup,label){
+  const n=soup.length/9, buf=new ArrayBuffer(84+n*50), dv=new DataView(buf);
+  const h=('Reparador de G-code - '+label).slice(0,79);
+  for(let i=0;i<h.length;i++) dv.setUint8(i,h.charCodeAt(i)&127);
+  dv.setUint32(80,n,true);
+  for(let i=0;i<n;i++){
+    const s=9*i, o=84+50*i;
+    const ux=soup[s+3]-soup[s],uy=soup[s+4]-soup[s+1],uz=soup[s+5]-soup[s+2];
+    const vx=soup[s+6]-soup[s],vy=soup[s+7]-soup[s+1],vz=soup[s+8]-soup[s+2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const l=Math.hypot(nx,ny,nz)||1;
+    dv.setFloat32(o,nx/l,true); dv.setFloat32(o+4,ny/l,true); dv.setFloat32(o+8,nz/l,true);
+    for(let j=0;j<9;j++) dv.setFloat32(o+12+4*j,soup[s+j],true);
+  }
+  return buf;
+}
+
+const yesNo=v=>v?'sim':'não';
+const ROWS=[
+  ['corrupt','Linhas corrompidas','bad'],
+  ['blobs','Excesso de extrusão','bad'],
+  ['tempBad','Temperaturas fora da faixa','bad'],
+  ['noHeat','Extrusão com bico frio','bad',yesNo],
+  ['truncated','Arquivo cortado / sem final','bad',yesNo],
+  ['nulls','Movimentos nulos','warn'],
+  ['layerGaps','Saltos entre camadas','warn'],
+  ['zDown','Z descendo','warn'],
+  ['outBed','Fora da mesa','warn'],
+  ['layers','Camadas','dim'],
+  ['layerH','Altura de camada (mm)','dim',fmt2],
+  ['filament','Filamento (m)','dim',v=>fmt2(v/1000)],
+  ['time','Tempo estimado','dim',fmtTime],
+  ['dims','Medidas X·Y·Z (mm)','dim',v=>v.map(fmt1).join(' × ')],
+  ['lines','Linhas','dim'],
+];
+function cell(an,row){
+  if(!an) return '<td class="num"><span class="pill dim">—</span></td>';
+  const v=an.stats[row[0]], cls=row[2]==='dim'?'dim':(v>0?row[2]:'good'), txt=row[3]?row[3](v):fmtInt(v);
+  return `<td class="num"><span class="pill ${cls}">${txt}</span></td>`;
+}
+function problems(an){ const s=an.stats; return (s.corrupt>0)+(s.blobs>0)+(s.tempBad>0)+(s.noHeat>0)+(s.truncated>0); }
+function warnings(an){ const s=an.stats; return (s.layerGaps>0)+(s.zDown>0)+(s.outBed>0); }
+function renderReport(){
+  $('report').innerHTML=ROWS.map(r=>`<tr><td>${r[1]}</td>${cell(state.an,r)}${cell(state.repAn,r)}</tr>`).join('');
+  const an=state.repAn||state.an, v=$('verdict');
+  if(!an){ v.innerHTML=''; $('whereBox').hidden=true; $('log').hidden=true; return; }
+  const p=problems(an), w=warnings(an);
+  const wtxt=w?' Confira os avisos: saltos de camada, Z descendo e fora da mesa não têm conserto automático.':'';
+  if(state.result==='stl') v.innerHTML='<div class="verdict ok"><div>STL sólido gerado<small>Peça maciça, sem vazios internos. Importe no Creality Print e fatie com preenchimento de 100%.</small></div></div>';
+  else if(p===0) v.innerHTML=`<div class="verdict ok"><div>${state.repAn?'Pronto para o Creality Print':'G-code sem erros'}<small>Nenhum erro que impeça a impressão.${wtxt}</small></div></div>`;
+  else v.innerHTML=`<div class="verdict no"><div>${p} tipo${p>1?'s':''} de falha encontrado${p>1?'s':''}<small>${state.repAn?'Ative todas as correções e repare de novo.':'Escolha o que fazer e clique no botão.'}${wtxt}</small></div></div>`;
+  const list=state.an?state.an.issues:[];
+  $('whereBox').hidden=!list.length;
+  const shown=list.slice(0,150);
+  $('issues').innerHTML=shown.map(([ln,k,m])=>`<li><span class="ln">linha ${fmtInt(ln)}</span><span class="${k}">${esc(m)}</span></li>`).join('')+
+    (list.length>shown.length?`<li><span class="ln"></span><span>e mais ${fmtInt(list.length-shown.length)}…</span></li>`:'');
+  const L=state.log, ul=$('log');
+  if(L){
+    ul.innerHTML=L.map(t=>`<li>${esc(t)}</li>`).join(''); ul.hidden=!L.length;
+  } else ul.hidden=true;
+}
+function buildLog(a,b,o,ms){
+  const s=a.stats, r=b.stats, items=[];
+  const d=(k)=>s[k]-r[k];
+  if(o.fixCorrupt&&d('corrupt')>0) items.push(`${fmtInt(d('corrupt'))} linha${d('corrupt')>1?'s':''} corrompida${d('corrupt')>1?'s':''} removida${d('corrupt')>1?'s':''}`);
+  if(o.fixBlob&&d('blobs')>0) items.push(`${fmtInt(d('blobs'))} excesso${d('blobs')>1?'s':''} de extrusão corrigido${d('blobs')>1?'s':''}`);
+  if(o.fixTemp&&d('tempBad')>0) items.push(`${fmtInt(d('tempBad'))} temperatura${d('tempBad')>1?'s':''} corrigida${d('tempBad')>1?'s':''} (bico ${o.hotT} °C, mesa ${o.bedT} °C)`);
+  if(r.heatAdded) items.push(`Aquecimento inserido antes da primeira camada`);
+  if(r.endAdded) items.push('Finalização segura adicionada no fim do arquivo');
+  if(o.fixNull&&d('nulls')>0) items.push(`${fmtInt(d('nulls'))} movimento${d('nulls')>1?'s':''} nulo${d('nulls')>1?'s':''} removido${d('nulls')>1?'s':''}`);
+  items.push(`Concluído em ${fmt1(ms/1000)} s`);
+  return items;
+}
+
+async function loadBuffer(buf,name,size){
+  state.name=name; state.buf=buf; state.an=null;
+  $('fileName').textContent=name; $('fileSize').textContent=`${fmt2(size/1048576)} MB`;
+  clearResult();
+  renderReport();
+  await analyze(true);
+}
+async function analyze(reframe){
+  if(!state.buf||state.busy) return;
+  busy(true,'Analisando G-code');
+  try{
+    const r=await run('analyze',state.buf,{opts:opts()});
+    state.an=r.analysis; state.med=r.analysis.med;
+    const s=state.an.stats;
+    $('fileSize').textContent=`${fmt2(state.buf.byteLength/1048576)} MB · ${fmtInt(s.lines)} linhas${s.slicer?' · '+s.slicer:''}`;
+  }catch(err){ toast('Não consegui analisar: '+err.message); }
+  busy(false); updateMode(); renderReport(); show(reframe);
+}
+async function loadFile(f){
+  if(!f) return;
+  if(!/\.(gcode|gco|g|nc)$/i.test(f.name)){ toast('Escolha um arquivo .gcode'); return; }
+  try{ const buf=await f.arrayBuffer(); if(!buf.byteLength){ toast('O arquivo está vazio.'); return; } await loadBuffer(buf,f.name,f.size); }
+  catch(err){ toast('Não consegui ler o arquivo: '+err.message); }
+}
+function busy(on,msg){
+  state.busy=on; $('runBtn').disabled=on; $('prog').hidden=!on;
+  if(on) setProgress(1,msg||'Processando');
+}
+async function repair(){
+  if(!state.buf||state.busy) return;
+  if(!state.an){ toast('Carregue um G-code primeiro.'); return; }
+  const t0=performance.now(), o=opts();
+  if(o.mode==='solid'){
+    busy(true,'Lendo trajetos');
+    try{
+      const r=await run('solid',state.buf,{opts:o});
+      clearResult();
+      state.solid={soup:r.soup,stats:r.stats}; state.result='stl';
+      const s=r.stats, items=[`Peça reconstruída como sólido maciço (voxel de ${fmt2(s.hxy)} × ${fmt2(s.hz)} mm)`,
+        `${fmtInt(s.tris)} triângulos · ${fmt1(s.volume/1000)} cm³ · ${s.dims.map(fmt1).join(' × ')} mm`];
+      if(o.skipAux&&s.skipped) items.push('Saia, borda e suportes ignorados');
+      else if(o.skipAux&&!s.sawType) items.push('O G-code não marca saia nem suportes: se houver, eles entram na peça');
+      if(s.removed) items.push(`${fmtInt(s.removed)} fragmento${s.removed>1?'s':''} solto${s.removed>1?'s':''} descartado${s.removed>1?'s':''}`);
+      items.push(`Concluído em ${fmt1((performance.now()-t0)/1000)} s`);
+      state.log=items;
+      $('vRep').disabled=false; setView('rep');
+      $('dlBtn').disabled=false;
+      $('dlNote').textContent='No Creality Print: importe o .stl, ajuste o preenchimento para 100% (ou aumente paredes e camadas de topo e fundo) e fatie.';
+    }catch(err){ toast('Não consegui solidificar: '+err.message); }
+    busy(false); updateMode(); renderReport();
+    return;
+  }
+  busy(true,'Corrigindo G-code');
+  try{
+    const r=await run('repair',state.buf,{opts:o,med:state.med});
+    clearResult();
+    state.rep=r.bytes; state.repAn=r.analysis; state.result='gcode'; state.log=buildLog(state.an,state.repAn,o,performance.now()-t0);
+    $('vRep').disabled=false; setView('rep');
+    $('dlBtn').disabled=false;
+    $('dlNote').textContent='Abra o .gcode no Creality Print para conferir a pré-visualização e envie para a impressora, ou copie para o cartão ou pendrive.';
+  }catch(err){ toast('O reparo falhou: '+err.message); }
+  busy(false); updateMode(); renderReport();
+}
+function download(){
+  if(!state.result) return;
+  const base=(state.name||'modelo').replace(/\.(gcode|gco|g|nc)$/i,'');
+  const a=document.createElement('a');
+  if(state.result==='stl'){ a.href=URL.createObjectURL(new Blob([toSTL(state.solid.soup,base)],{type:'model/stl'})); a.download=base+'_solido.stl'; }
+  else { a.href=URL.createObjectURL(new Blob([state.rep],{type:'text/plain'})); a.download=base+'_reparado.gcode'; }
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+/* ---------- pré-visualização 3D ---------- */
+let R=null;
+function cssColor(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim()||'#888'; }
+function initViewer(){
+  if(typeof THREE==='undefined'||!THREE.OrbitControls){ const m=$('viewerMsg'); m.hidden=false; m.textContent='A pré-visualização 3D não carregou. A análise, o reparo e o download continuam funcionando.'; return; }
+  const canvas=$('cv');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); renderer.localClippingEnabled=true;
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(38,1,0.1,1e7); camera.up.set(0,0,1);
+  const controls=new THREE.OrbitControls(camera,canvas); controls.enableDamping=true; controls.dampingFactor=0.12;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x445566,0.75));
+  const dir=new THREE.DirectionalLight(0xffffff,0.7); camera.add(dir); dir.position.set(0.4,0.8,0.2); scene.add(camera);
+  const group=new THREE.Group(); scene.add(group);
+  const plane=new THREE.Plane(new THREE.Vector3(0,0,-1),1e9);
+  R={renderer,scene,camera,controls,group,plane,grid:null,cur:null};
+  const resize=()=>{ const st=$('stage'), w=st.clientWidth, h=st.clientHeight; if(!w||!h) return; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); };
+  new ResizeObserver(resize).observe($('stage')); resize();
+  (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); })();
+  R.scene.background=new THREE.Color(cssColor('--viewer'));
+}
+function show(reframe){
+  if(!R) return;
+  R.scene.background=new THREE.Color(cssColor('--viewer'));
+  const isRep=state.view==='rep'&&state.repAn, an=isRep?state.repAn:state.an;
+  while(R.group.children.length){ const c=R.group.children.pop(); c.geometry&&c.geometry.dispose(); c.material&&c.material.dispose(); }
+  R.cur=null;
+  const o=opts();
+  if(reframe||!R.grid){
+    if(R.grid){ R.scene.remove(R.grid); R.grid.geometry.dispose(); }
+    const gs=Math.max(o.bedX,o.bedY);
+    R.grid=new THREE.GridHelper(gs,Math.round(gs/10)); R.grid.rotation.x=Math.PI/2; R.grid.position.set(o.bedX/2,o.bedY/2,0); R.scene.add(R.grid);
+  }
+  R.grid.material.color=new THREE.Color(cssColor('--gridc'));
+  const msg=$('viewerMsg');
+  if(!an){ $('hud').textContent=''; return; }
+  const sl=$('layer'), prevMax=+sl.max;
+  if(state.view==='rep'&&state.result==='stl'&&state.solid){
+    msg.hidden=true;
+    const soup=state.solid.soup, L=an.layerZ.length, g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(soup,3)); g.computeVertexNormals();
+    const front=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:cssColor('--hi'),roughness:0.62,metalness:0.05,side:THREE.FrontSide,clippingPlanes:[R.plane]}));
+    const back=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:cssColor('--cut'),side:THREE.BackSide,clippingPlanes:[R.plane]}));
+    R.group.add(front,back);
+    R.cur={an,mesh:true};
+    sl.max=Math.max(1,L); if(+sl.value>L||+sl.value===prevMax) sl.value=Math.max(1,L);
+    applyLayer();
+    const s=state.solid.stats;
+    $('hud').textContent=`STL sólido · ${fmtInt(s.tris)} triângulos · ${s.dims.map(fmt1).join('×')} mm`;
+    return;
+  }
+  const pos=an.seg, ends=an.layerEnds, L=an.layerZ.length;
+  if(!pos.length){ msg.hidden=false; msg.textContent='Este G-code não tem trechos de impressão para mostrar.'; $('hud').textContent=''; return; }
+  msg.hidden=true;
+  const attr=new THREE.BufferAttribute(pos,3);
+  const col=new Float32Array(pos.length), lo=new THREE.Color(cssColor('--lo')), hi=new THREE.Color(cssColor('--hi')), c=new THREE.Color();
+  let s=0;
+  for(let k=0;k<ends.length;k++){
+    c.copy(lo).lerp(hi,L>1?k/(L-1):1);
+    for(let j=s*2;j<ends[k]*2;j++){ col[3*j]=c.r; col[3*j+1]=c.g; col[3*j+2]=c.b; }
+    s=ends[k];
+  }
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',attr); geo.setAttribute('color',new THREE.BufferAttribute(col,3)); geo.computeBoundingBox();
+  const lines=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({vertexColors:true}));
+  const geoTop=new THREE.BufferGeometry(); geoTop.setAttribute('position',attr);
+  const top=new THREE.LineSegments(geoTop,new THREE.LineBasicMaterial({color:cssColor('--cut')})); top.renderOrder=2;
+  R.group.add(lines,top);
+  let pts=null;
+  if($('showFaults').checked&&an.marks.length){
+    const m=an.marks, n=m.length/4, p=new Float32Array(n*3), pc=new Float32Array(n*3), bad=new THREE.Color(cssColor('--bad')), warn=new THREE.Color(cssColor('--warn'));
+    for(let i=0;i<n;i++){ p[3*i]=m[4*i]; p[3*i+1]=m[4*i+1]; p[3*i+2]=m[4*i+2]; const cc=m[4*i+3]===2?warn:bad; pc[3*i]=cc.r; pc[3*i+1]=cc.g; pc[3*i+2]=cc.b; }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(p,3)); g.setAttribute('color',new THREE.BufferAttribute(pc,3));
+    pts=new THREE.Points(g,new THREE.PointsMaterial({size:9,sizeAttenuation:false,vertexColors:true,depthTest:false})); pts.renderOrder=5;
+    R.group.add(pts);
+  }
+  R.cur={an,lines,top,pts};
+  sl.max=Math.max(1,L);
+  if(reframe||+sl.value>L||+sl.value===prevMax) sl.value=Math.max(1,L);
+  applyLayer();
+  if(reframe){
+    const bb=geo.boundingBox, ctr=bb.getCenter(new THREE.Vector3()), size=bb.getSize(new THREE.Vector3()), r=Math.max(size.x,size.y,size.z)||20;
+    R.controls.target.copy(ctr);
+    R.camera.position.set(ctr.x+r*1.3,ctr.y-r*1.7,ctr.z+r*1.2); R.camera.near=r/500; R.camera.far=r*500; R.camera.updateProjectionMatrix();
+  }
+  $('hud').textContent=`${isRep?'Reparado':'Original'} · ${fmtInt(L)} camadas · ${fmtInt(pos.length/6)} trechos${an.stats.partial?' · pré-visualização parcial':''}`;
+}
+function applyLayer(){
+  if(!R||!R.cur) return;
+  const {an,lines,top,pts,mesh}=R.cur, ends=an.layerEnds, L=an.layerZ.length;
+  const k=Math.min(Math.max(1,+$('layer').value),Math.max(1,L));
+  if(mesh){
+    R.plane.constant=k>=L?1e9:an.layerZ[k-1]+1e-3;
+    $('layerOut').textContent=L?`${k} de ${L} · Z ${fmt2(an.layerZ[k-1])} mm`:'';
+    return;
+  }
+  R.plane.constant=1e9;
+  const end=ends[k-1]||0, start=k>1?ends[k-2]:0;
+  lines.geometry.setDrawRange(0,end*2);
+  top.geometry.setDrawRange(start*2,(end-start)*2);
+  if(pts){ const zmax=an.layerZ[k-1]+1e-3; pts.visible=true; const m=an.marks; let cnt=0; for(let i=0;i<m.length/4;i++) if(m[4*i+2]<=zmax) cnt=i+1; pts.geometry.setDrawRange(0,k>=L?m.length/4:cnt); }
+  $('layerOut').textContent=L?`${k} de ${L} · Z ${fmt2(an.layerZ[k-1])} mm`:'';
+}
+function setView(v,skip){
+  state.view=v; $('vOrig').setAttribute('aria-pressed',String(v==='orig')); $('vRep').setAttribute('aria-pressed',String(v==='rep'));
+  if(!skip) show(false);
+}
+
+/* ---------- eventos ---------- */
+const drop=$('drop'), fi=$('fileInput');
+drop.addEventListener('click',()=>fi.click());
+drop.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
+fi.addEventListener('change',()=>{ loadFile(fi.files[0]); fi.value=''; });
+['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); if(t==='drop'||e.target===document.documentElement) drop.classList.remove('over'); }));
+document.addEventListener('drop',e=>{ const f=e.dataTransfer&&e.dataTransfer.files[0]; if(f) loadFile(f); });
+function loadSample(){ const b=new TextEncoder().encode(makeSampleGcode()); loadBuffer(b.buffer,'exemplo_cubo_com_falhas.gcode',b.byteLength); }
+$('sampleBtn').addEventListener('click',loadSample);
+$('runBtn').addEventListener('click',repair);
+$('dlBtn').addEventListener('click',download);
+$('vOrig').addEventListener('click',()=>setView('orig'));
+$('vRep').addEventListener('click',()=>{ if(state.result) setView('rep'); });
+document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener('change',updateMode));
+$('res').addEventListener('input',updateMode); $('smooth').addEventListener('input',updateMode);
+$('showFaults').addEventListener('change',()=>show(false));
+$('layer').addEventListener('input',applyLayer);
+['bedX','bedY','bedZ','maxHot','maxBed'].forEach(id=>$(id).addEventListener('change',()=>{
+  if(!state.buf) return;
+  clearResult('As configurações mudaram. Processe de novo para liberar o download.');
+  analyze(true);
+}));
+const rethemed=()=>show(false);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rethemed);
+new MutationObserver(rethemed).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+initViewer(); updateMode(); renderReport();
+loadSample();
+})();
+</script>
+</body></html>

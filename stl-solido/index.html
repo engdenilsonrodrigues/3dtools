@@ -1,0 +1,1116 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Reparador de STL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: bancada de oficina — painel de controle à esquerda, mesa de inspeção 3D à direita */
+:root{
+  --bg:#ECEFF1; --panel:#FFFFFF; --ink:#16212B; --muted:#5A6772; --line:#D3DADF; --soft:#F4F6F7;
+  --accent:#0E7466; --accent-ink:#FFFFFF; --accent-soft:#DCEFEC;
+  --good:#2C7A4B; --good-soft:#DFF1E6; --warn:#A46412; --warn-soft:#F8EBD6; --bad:#B8322A; --bad-soft:#F8E0DE;
+  --viewer:#DCE2E6; --model:#7FA9B5; --cut:#E0A040; --gridc:#B5C0C7;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0E1418; --panel:#162027; --ink:#E4EAEE; --muted:#93A2AC; --line:#283540; --soft:#1B262E;
+  --accent:#3EC0AA; --accent-ink:#04201B; --accent-soft:#163A35;
+  --good:#5DCB8C; --good-soft:#163526; --warn:#E2AA55; --warn-soft:#3A2C14; --bad:#F27A70; --bad-soft:#3E1D1B;
+  --viewer:#10181D; --model:#6F9BA8; --cut:#D9973A; --gridc:#2B3943; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0E1418; --panel:#162027; --ink:#E4EAEE; --muted:#93A2AC; --line:#283540; --soft:#1B262E;
+  --accent:#3EC0AA; --accent-ink:#04201B; --accent-soft:#163A35;
+  --good:#5DCB8C; --good-soft:#163526; --warn:#E2AA55; --warn-soft:#3A2C14; --bad:#F27A70; --bad-soft:#3E1D1B;
+  --viewer:#10181D; --model:#6F9BA8; --cut:#D9973A; --gridc:#2B3943; color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--panel)}
+.mark{width:34px;height:34px;flex:none}
+.top h1{font-size:18px;margin:0;font-weight:700;letter-spacing:-.01em}
+.top p{margin:0;color:var(--muted);font-size:13px}
+.top .spacer{flex:1}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.app{display:grid;grid-template-columns:minmax(300px,410px) minmax(0,1fr);gap:16px;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));align-items:start}
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;font-weight:600}
+.drop{border:1.5px dashed var(--line);border-radius:8px;padding:16px;display:flex;gap:12px;align-items:center;cursor:pointer;background:var(--soft);transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop svg{flex:none;color:var(--accent)}
+.drop b{display:block;font-weight:600}
+.drop span{color:var(--muted);font-size:12.5px}
+.file{font-family:var(--mono);font-size:12.5px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.file .n{overflow-wrap:anywhere;font-weight:500}
+.file .s{color:var(--muted)}
+.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mode{position:relative;display:flex;flex-direction:column;gap:3px;border:1.5px solid var(--line);border-radius:8px;padding:10px 11px;cursor:pointer;background:var(--panel)}
+.mode input{position:absolute;opacity:0;pointer-events:none}
+.mode b{font-size:13.5px}
+.mode span{font-size:12px;color:var(--muted);line-height:1.35}
+.mode:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.mode:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.opts{display:flex;flex-direction:column;gap:9px}
+.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer}
+.chk input{margin:2px 0 0;accent-color:var(--accent);width:15px;height:15px;flex:none}
+.chk small{display:block;color:var(--muted);font-size:12px}
+.range{display:flex;flex-direction:column;gap:4px}
+.range .row{display:flex;justify-content:space-between;gap:8px}
+.range output{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.range input{width:100%;accent-color:var(--accent)}
+.btn{appearance:none;border:0;border-radius:8px;padding:11px 14px;font:600 14px var(--sans);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.secondary{background:var(--soft);color:var(--ink);border:1px solid var(--line)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.prog{display:flex;flex-direction:column;gap:6px}
+.bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.prog small{color:var(--muted);font-family:var(--mono);font-size:12px}
+.verdict{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-weight:600}
+.verdict.ok{background:var(--good-soft);color:var(--good)}
+.verdict.no{background:var(--bad-soft);color:var(--bad)}
+.verdict small{display:block;font-weight:400;color:var(--ink);opacity:.8;font-size:12.5px}
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+th.num{text-align:right}
+.pill{display:inline-block;min-width:18px;padding:1px 7px;border-radius:999px;font-size:12px}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.good{background:var(--good-soft);color:var(--good)}
+.pill.dim{color:var(--muted)}
+.log{font-size:12.5px;color:var(--muted);margin:0;padding-left:18px}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.viewer{position:sticky;top:16px;background:var(--viewer);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:calc(100vh - 110px);min-height:420px;display:flex;flex-direction:column;min-width:0}
+.vbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--ink);font:500 13px var(--sans);padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.vbar .chk{align-items:center;font-size:13px}
+.vbar .chk input{margin:0}
+.cut{display:flex;align-items:center;gap:8px;font-size:13px;margin-left:auto}
+.cut input{width:120px;accent-color:var(--accent)}
+.stage{position:relative;flex:1;min-height:0}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 10px;max-width:calc(100% - 24px)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.hud:empty{display:none}
+.hud{position:absolute;right:12px;top:12px;font-family:var(--mono);font-size:11.5px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-variant-numeric:tabular-nums}
+.msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:8px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .viewer{position:relative;top:0;height:62vh;min-height:360px;order:-1}
+  .cut{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<header class="top">
+  <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="1" width="32" height="32" rx="8" fill="var(--accent)"/><path d="M9 23 17 8l8 15z" fill="none" stroke="var(--accent-ink)" stroke-width="2" stroke-linejoin="round"/><path d="M9 23h16M13 16.5h8M11 20h12" stroke="var(--accent-ink)" stroke-width="1.4" opacity=".7"/></svg>
+  <div>
+    <h1>Reparador de STL</h1>
+    <p>Corrige falhas da malha e entrega um sólido estanque, sem vazios internos, pronto para o Creality Print.</p>
+  </div>
+  <div class="spacer"></div>
+  <span class="chip">Tudo roda no seu navegador · nada é enviado</span>
+</header>
+
+<main class="app">
+  <aside class="panel">
+    <section class="card">
+      <h2>1 · Arquivo</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Escolher arquivo STL">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7.5v9L12 21l9-4.5v-9z"/><path d="m3 7.5 9 4.5 9-4.5M12 12v9"/></svg>
+        <div><b>Arraste um .stl aqui</b><span>ou clique para escolher (binário ou ASCII)</span></div>
+      </div>
+      <input type="file" id="fileInput" accept=".stl,model/stl,application/sla" hidden>
+      <div class="file"><span class="n" id="fileName">—</span><span class="s" id="fileSize"></span></div>
+      <div><button class="link" id="sampleBtn" type="button">Carregar exemplo com falhas</button></div>
+    </section>
+
+    <section class="card">
+      <h2>2 · Modo de reparo</h2>
+      <div class="modes">
+        <label class="mode"><input type="radio" name="mode" id="modeVoxel" value="voxel" checked><b>Solidificar</b><span>Reconstrói como um corpo único e maciço. Elimina vazios internos, autointerseções e cascas sobrepostas.</span></label>
+        <label class="mode"><input type="radio" name="mode" id="modePrecise" value="precise"><b>Reparo preciso</b><span>Mantém a geometria original. Fecha furos, corrige normais e remove duplicadas e cascas internas.</span></label>
+      </div>
+      <div class="opts" id="voxelOpts">
+        <div class="range">
+          <div class="row"><label for="res">Resolução</label><output id="resOut"></output></div>
+          <input type="range" id="res" min="64" max="320" step="8" value="192">
+        </div>
+        <div class="range">
+          <div class="row"><label for="smooth">Suavização</label><output id="smoothOut"></output></div>
+          <input type="range" id="smooth" min="0" max="12" step="1" value="4">
+        </div>
+        <label class="chk"><input type="checkbox" id="simplify" checked><span>Otimizar malha<small>Reduz triângulos em áreas planas sem alterar a forma.</small></span></label>
+        <label class="chk"><input type="checkbox" id="compensate" checked><span>Compensar dimensões<small>Corrige a expansão de ~½ voxel. Desligue se a peça tiver paredes muito finas.</small></span></label>
+      </div>
+      <div class="opts" id="preciseOpts" hidden>
+        <label class="chk"><input type="checkbox" id="fillHoles" checked><span>Fechar furos<small>Fecha bordas abertas da malha.</small></span></label>
+        <label class="chk"><input type="checkbox" id="removeInternal" checked><span>Remover cascas internas<small>Apaga superfícies presas dentro da peça, que criam vazios.</small></span></label>
+      </div>
+      <label class="chk"><input type="checkbox" id="removeFragments" checked><span>Remover fragmentos soltos<small>Descarta pedaços minúsculos separados do modelo.</small></span></label>
+      <button class="btn primary" id="runBtn" type="button">Reparar modelo</button>
+      <div class="prog" id="prog" hidden><div class="bar"><i id="barFill"></i></div><small id="progMsg">Preparando…</small></div>
+    </section>
+
+    <section class="card">
+      <h2>3 · Diagnóstico</h2>
+      <div id="verdict"></div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Verificação</th><th class="num">Original</th><th class="num">Reparado</th></tr></thead>
+          <tbody id="report"></tbody>
+        </table>
+      </div>
+      <ul class="log" id="log" hidden></ul>
+    </section>
+
+    <section class="card">
+      <h2>4 · Exportar</h2>
+      <button class="btn primary" id="dlBtn" type="button" disabled>Baixar STL reparado</button>
+      <p class="note" id="dlNote">Repare o modelo para liberar o download.</p>
+    </section>
+  </aside>
+
+  <section class="viewer" aria-label="Visualização 3D">
+    <div class="vbar">
+      <div class="seg" role="group" aria-label="Versão exibida">
+        <button type="button" id="vOrig" aria-pressed="true">Original</button>
+        <button type="button" id="vRep" aria-pressed="false" disabled>Reparado</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="showFaults" checked>Destacar falhas</label>
+      <label class="cut" for="cut">Corte em Z <input type="range" id="cut" min="0" max="100" value="100"></label>
+    </div>
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="hud" id="hud"></div>
+      <div class="legend">
+        <span><i style="background:var(--model)"></i>Superfície</span>
+        <span><i style="background:var(--cut)"></i>Interior exposto pelo corte</span>
+        <span><i style="background:var(--bad)"></i>Borda aberta</span>
+        <span><i style="background:var(--warn)"></i>Aresta não-manifold</span>
+      </div>
+      <div class="msg" id="viewerMsg" hidden></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script type="text/plain" id="workerSrc">/* Motor de reparo de malhas STL — roda dentro de um Web Worker */
+'use strict';
+const RAY = (function(){ const d=[0.5891,0.5507,0.5913]; const l=Math.hypot(d[0],d[1],d[2]); return [d[0]/l,d[1]/l,d[2]/l]; })();
+let progressFn = function(p,m){ if(typeof process!=="undefined"&&process.env.PROF){ const n=Date.now(); if(m!==progressFn.lm){ console.log((n-(progressFn.t||n))+"ms", progressFn.lm); progressFn.t=n; progressFn.lm=m; } } };
+function P(pct,msg){ progressFn(pct,msg); }
+
+function bboxSoup(s){
+  let a=[Infinity,Infinity,Infinity], b=[-Infinity,-Infinity,-Infinity];
+  for(let i=0;i<s.length;i+=3){ for(let k=0;k<3;k++){ const v=s[i+k]; if(v<a[k])a[k]=v; if(v>b[k])b[k]=v; } }
+  return {min:a,max:b};
+}
+function tolFor(bb){
+  const d=Math.hypot(bb.max[0]-bb.min[0],bb.max[1]-bb.min[1],bb.max[2]-bb.min[2])||1;
+  return Math.max(d*1e-6,1e-6);
+}
+
+function weld(soup,tol){
+  const n=soup.length/3, inv=1/tol, map=new Map(), V=[], F=new Array(n);
+  for(let i=0;i<n;i++){
+    const x=soup[3*i],y=soup[3*i+1],z=soup[3*i+2];
+    const k=Math.round(x*inv)+'_'+Math.round(y*inv)+'_'+Math.round(z*inv);
+    let id=map.get(k);
+    if(id===undefined){ id=V.length/3; V.push(x,y,z); map.set(k,id); }
+    F[i]=id;
+  }
+  return {V,F};
+}
+
+function area2(V,a,b,c){
+  const ux=V[3*b]-V[3*a],uy=V[3*b+1]-V[3*a+1],uz=V[3*b+2]-V[3*a+2];
+  const vx=V[3*c]-V[3*a],vy=V[3*c+1]-V[3*a+1],vz=V[3*c+2]-V[3*a+2];
+  return Math.hypot(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx);
+}
+
+/* remove faces com índices repetidos e duplicadas; pares opostos (parede de espessura zero) se anulam */
+function cleanFaces(V,F,tol){
+  const m=F.length/3; let degenerate=0, zeroArea=0, duplicates=0;
+  const groups=new Map();
+  const aeps=tol*tol;
+  for(let f=0;f<m;f++){
+    const a=F[3*f],b=F[3*f+1],c=F[3*f+2];
+    if(a===b||b===c||c===a){ degenerate++; continue; }
+    if(area2(V,a,b,c)<aeps) zeroArea++;
+    let s0=a,s1=b,s2=c,t;
+    if(s0>s1){t=s0;s0=s1;s1=t;} if(s1>s2){t=s1;s1=s2;s2=t;} if(s0>s1){t=s0;s0=s1;s1=t;}
+    const even=(a===s0&&b===s1)||(b===s0&&c===s1)||(c===s0&&a===s1);
+    const key=s0+'_'+s1+'_'+s2;
+    let g=groups.get(key);
+    if(!g){ g={p:0,q:0,fe:-1,fo:-1}; groups.set(key,g); }
+    if(even){ g.p++; if(g.fe<0)g.fe=f; } else { g.q++; if(g.fo<0)g.fo=f; }
+  }
+  const out=[];
+  for(const g of groups.values()){
+    const net=g.p-g.q, tot=g.p+g.q;
+    let keep=-1;
+    if(net>0) keep=g.fe; else if(net<0) keep=g.fo;
+    duplicates+=tot-(keep>=0?1:0);
+    if(keep>=0) out.push(F[3*keep],F[3*keep+1],F[3*keep+2]);
+  }
+  return {F:out,degenerate:degenerate+zeroArea,removedDegenerate:degenerate,duplicates};
+}
+
+function buildEdges(F,nv){
+  const m=F.length/3, E=new Map();
+  for(let f=0;f<m;f++){
+    for(let k=0;k<3;k++){
+      const a=F[3*f+k], b=F[3*f+(k+1)%3];
+      const key=a<b?a*nv+b:b*nv+a;
+      const e=E.get(key);
+      if(e===undefined) E.set(key,[f]); else e.push(f);
+    }
+  }
+  return E;
+}
+function hasDir(F,g,u,v){
+  const x=F[3*g],y=F[3*g+1],z=F[3*g+2];
+  return (x===u&&y===v)||(y===u&&z===v)||(z===u&&x===v);
+}
+
+function UF(n){ const p=new Int32Array(n); for(let i=0;i<n;i++)p[i]=i;
+  const find=i=>{ while(p[i]!==i){ p[i]=p[p[i]]; i=p[i]; } return i; };
+  return {find, union:(a,b)=>{ a=find(a); b=find(b); if(a!==b)p[a]=b; }};
+}
+
+function components(F,E,m){
+  const uf=UF(m);
+  for(const list of E.values()) for(let i=1;i<list.length;i++) uf.union(list[0],list[i]);
+  const map=new Map();
+  for(let f=0;f<m;f++){ const r=uf.find(f); let a=map.get(r); if(!a){a=[];map.set(r,a);} a.push(f); }
+  return [...map.values()];
+}
+
+function signedVol(V,F,faces){
+  let s=0;
+  for(const f of faces){
+    const a=3*F[3*f],b=3*F[3*f+1],c=3*F[3*f+2];
+    s+=V[a]*(V[b+1]*V[c+2]-V[b+2]*V[c+1])-V[a+1]*(V[b]*V[c+2]-V[b+2]*V[c])+V[a+2]*(V[b]*V[c+1]-V[b+1]*V[c]);
+  }
+  return s/6;
+}
+
+/* orienta faces de forma consistente via BFS em arestas manifold */
+function orient(F,E,nv){
+  const m=F.length/3, seen=new Uint8Array(m), Q=new Int32Array(m);
+  let flips=0;
+  for(let s=0;s<m;s++){
+    if(seen[s]) continue;
+    seen[s]=1; let h=0,t=0; Q[t++]=s;
+    while(h<t){
+      const f=Q[h++];
+      for(let k=0;k<3;k++){
+        const u=F[3*f+k], v=F[3*f+(k+1)%3];
+        const list=E.get(u<v?u*nv+v:v*nv+u);
+        if(!list||list.length!==2) continue;
+        const g=list[0]===f?list[1]:list[0];
+        if(seen[g]) continue;
+        if(hasDir(F,g,u,v)){ const tmp=F[3*g+1]; F[3*g+1]=F[3*g+2]; F[3*g+2]=tmp; flips++; }
+        seen[g]=1; Q[t++]=g;
+      }
+    }
+  }
+  return flips;
+}
+function outward(V,F,E){
+  const comps=components(F,E,F.length/3);
+  let flipped=0;
+  for(const c of comps){
+    if(signedVol(V,F,c)<0){ for(const f of c){ const t=F[3*f+1]; F[3*f+1]=F[3*f+2]; F[3*f+2]=t; } flipped+=c.length; }
+  }
+  return flipped;
+}
+
+/* fecha furos: percorre laços de borda e triangula em leque */
+function fillHoles(V,F,E,nv){
+  const out=new Map(); let count=0;
+  for(const [key,list] of E){
+    if(list.length!==1) continue;
+    const a=Math.floor(key/nv), b=key-a*nv, f=list[0];
+    let s,t; if(hasDir(F,f,a,b)){ s=b;t=a; } else { s=a;t=b; }
+    let o=out.get(s); if(!o){o=[];out.set(s,o);} o.push(t);
+  }
+  for(const start of [...out.keys()]){
+    let o=out.get(start);
+    while(o&&o.length){
+      const loop=[start]; let cur=o.pop(), guard=0, ok=true;
+      while(cur!==start){
+        if(++guard>5e6){ok=false;break;}
+        loop.push(cur);
+        const oc=out.get(cur);
+        if(!oc||!oc.length){ ok=false; break; }
+        cur=oc.pop();
+      }
+      if(ok&&loop.length>=3){
+        if(loop.length===3){ F.push(loop[0],loop[1],loop[2]); }
+        else{
+          let cx=0,cy=0,cz=0;
+          for(const v of loop){ cx+=V[3*v]; cy+=V[3*v+1]; cz+=V[3*v+2]; }
+          const c=V.length/3; V.push(cx/loop.length,cy/loop.length,cz/loop.length);
+          for(let i=0;i<loop.length;i++) F.push(loop[i],loop[(i+1)%loop.length],c);
+        }
+        count++;
+      }
+      o=out.get(start);
+    }
+  }
+  return count;
+}
+
+function rayHits(V,F,faces,p){
+  let hits=0; const [dx,dy,dz]=RAY;
+  for(const f of faces){
+    const a=3*F[3*f],b=3*F[3*f+1],c=3*F[3*f+2];
+    const e1x=V[b]-V[a],e1y=V[b+1]-V[a+1],e1z=V[b+2]-V[a+2];
+    const e2x=V[c]-V[a],e2y=V[c+1]-V[a+1],e2z=V[c+2]-V[a+2];
+    const px=dy*e2z-dz*e2y,py=dz*e2x-dx*e2z,pz=dx*e2y-dy*e2x;
+    const det=e1x*px+e1y*py+e1z*pz;
+    if(Math.abs(det)<1e-14) continue;
+    const id=1/det;
+    const tx=p[0]-V[a],ty=p[1]-V[a+1],tz=p[2]-V[a+2];
+    const u=(tx*px+ty*py+tz*pz)*id; if(u<0||u>1) continue;
+    const qx=ty*e1z-tz*e1y,qy=tz*e1x-tx*e1z,qz=tx*e1y-ty*e1x;
+    const v=(dx*qx+dy*qy+dz*qz)*id; if(v<0||u+v>1) continue;
+    const t=(e2x*qx+e2y*qy+e2z*qz)*id;
+    if(t>1e-9) hits++;
+  }
+  return hits;
+}
+function shellInfo(V,F,comps){
+  const info=comps.map(faces=>{
+    const bb=[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
+    for(const f of faces) for(let k=0;k<3;k++){ const v=3*F[3*f+k];
+      for(let d=0;d<3;d++){ const x=V[v+d]; if(x<bb[d])bb[d]=x; if(x>bb[d+3])bb[d+3]=x; } }
+    const vol=signedVol(V,F,faces);
+    return {faces,vol,abs:Math.abs(vol),bb};
+  });
+  const order=info.map((_,i)=>i).sort((i,j)=>info[j].abs-info[i].abs);
+  const internal=new Set();
+  const lim=Math.min(order.length,1500);
+  for(let oi=1;oi<lim;oi++){
+    const I=info[order[oi]];
+    const samples=[];
+    const step=Math.max(1,Math.floor(I.faces.length/3));
+    for(let s=0;s<I.faces.length&&samples.length<3;s+=step){
+      const f=I.faces[s];
+      samples.push([0,1,2].map(d=>(V[3*F[3*f]+d]+V[3*F[3*f+1]+d]+V[3*F[3*f+2]+d])/3));
+    }
+    for(let oj=0;oj<oi;oj++){
+      const J=info[order[oj]];
+      if(J.faces.length<4) continue;
+      if(I.bb[0]<J.bb[0]||I.bb[1]<J.bb[1]||I.bb[2]<J.bb[2]||I.bb[3]>J.bb[3]||I.bb[4]>J.bb[4]||I.bb[5]>J.bb[5]) continue;
+      let inside=0;
+      for(const p of samples) if(rayHits(V,F,J.faces,p)%2===1) inside++;
+      if(inside*2>samples.length){ internal.add(order[oi]); break; }
+    }
+  }
+  return {info,internal};
+}
+
+function analyzeSoup(soup){
+  const bb=bboxSoup(soup), tol=tolFor(bb);
+  const {V,F:F0}=weld(soup,tol);
+  const c=cleanFaces(V,F0,tol), F=c.F, nv=V.length/3, m=F.length/3;
+  const E=buildEdges(F,nv);
+  let boundary=0,nonManifold=0,inconsistent=0;
+  const segB=[],segN=[];
+  const vuf=UF(nv), bverts=new Set();
+  const push=(arr,a,b)=>{ if(arr.length<600000) arr.push(V[3*a],V[3*a+1],V[3*a+2],V[3*b],V[3*b+1],V[3*b+2]); };
+  for(const [key,list] of E){
+    const a=Math.floor(key/nv), b=key-a*nv;
+    if(list.length===1){ boundary++; push(segB,a,b); vuf.union(a,b); bverts.add(a); bverts.add(b); }
+    else if(list.length>2){ nonManifold++; push(segN,a,b); }
+    else { const s1=hasDir(F,list[0],a,b), s2=hasDir(F,list[1],a,b); if(s1===s2) inconsistent++; }
+  }
+  const roots=new Set(); for(const v of bverts) roots.add(vuf.find(v));
+  const comps=components(F,E,m);
+  const sh=shellInfo(V,F,comps);
+  let vol=0; for(const s of sh.info) vol+=s.vol;
+  return {
+    stats:{tris:soup.length/9,verts:nv,boundaryEdges:boundary,holes:roots.size,nonManifold,inconsistent,
+      degenerate:c.degenerate,duplicates:c.duplicates,shells:comps.length,internal:sh.internal.size,
+      volume:vol,dims:[bb.max[0]-bb.min[0],bb.max[1]-bb.min[1],bb.max[2]-bb.min[2]],
+      watertight:boundary===0&&nonManifold===0&&inconsistent===0&&m>0},
+    segB:new Float32Array(segB), segN:new Float32Array(segN)
+  };
+}
+
+/* ---------- reconstrução volumétrica (voxel + marching tetrahedra) ---------- */
+function voxelSolid(V,F,o){
+  let mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];
+  for(let j=0;j<F.length;j++){ const i=3*F[j]; for(let k=0;k<3;k++){ if(V[i+k]<mn[k])mn[k]=V[i+k]; if(V[i+k]>mx[k])mx[k]=V[i+k]; } }
+  const dim=[mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2]];
+  const h=Math.max(dim[0],dim[1],dim[2])/o.res;
+  const pad=2;
+  const nx=Math.ceil(dim[0]/h)+2*pad+1, ny=Math.ceil(dim[1]/h)+2*pad+1, nz=Math.ceil(dim[2]/h)+2*pad+1;
+  const nxy=nx*ny, N=nxy*nz;
+  if(N>60e6) throw new Error('Resolução alta demais para este formato de peça. Reduza a resolução.');
+  const ox=mn[0]-pad*h, oy=mn[1]-pad*h, oz=mn[2]-pad*h;
+  const G=new Uint8Array(N);
+  const m=F.length/3, step=h/3;
+  P(50,'Voxelizando superfície');
+  for(let f=0;f<m;f++){
+    if(f%20000===0) P(50+12*f/m,'Voxelizando superfície');
+    const a=3*F[3*f],b=3*F[3*f+1],c=3*F[3*f+2];
+    const ax=V[a],ay=V[a+1],az=V[a+2];
+    const ux=V[b]-ax,uy=V[b+1]-ay,uz=V[b+2]-az, vx=V[c]-ax,vy=V[c+1]-ay,vz=V[c+2]-az;
+    const L=Math.max(Math.hypot(ux,uy,uz),Math.hypot(vx,vy,vz),Math.hypot(vx-ux,vy-uy,vz-uz));
+    const n=Math.max(1,Math.ceil(L/step));
+    for(let i=0;i<=n;i++){ const s=i/n;
+      for(let j=0;j<=n-i;j++){ const t=j/n;
+        const ix=Math.floor((ax+s*ux+t*vx-ox)/h), iy=Math.floor((ay+s*uy+t*vy-oy)/h), iz=Math.floor((az+s*uz+t*vz-oz)/h);
+        G[ix+nx*iy+nxy*iz]=1;
+      }
+    }
+  }
+  P(63,'Preenchendo volume interno');
+  const QS=1<<23, mask=QS-1, Q=new Int32Array(QS); let hd=0, tl=0;
+  G[0]=2; Q[tl++]=0;
+  while(hd!==tl){
+    const idx=Q[hd]; hd=(hd+1)&mask;
+    const x=idx%nx, r=(idx-x)/nx, y=r%ny, z=(r-y)/ny;
+    const nb=[x>0?idx-1:-1, x<nx-1?idx+1:-1, y>0?idx-nx:-1, y<ny-1?idx+nx:-1, z>0?idx-nxy:-1, z<nz-1?idx+nxy:-1];
+    for(let k=0;k<6;k++){ const q=nb[k];
+      if(q>=0&&G[q]===0){ G[q]=2; Q[tl]=q; tl=(tl+1)&mask; if(tl===hd) throw new Error('Memória insuficiente no preenchimento.'); } }
+  }
+  let S=new Uint8Array(N);
+  for(let i=0;i<N;i++) S[i]=G[i]===2?0:255;
+  // suavização do campo [1,2,1]/4 em cada eixo
+  P(68,'Preparando campo de densidade');
+  let T=G; // reaproveita memória
+  for(let ax=0;ax<3;ax++){
+    const st=ax===0?1:ax===1?nx:nxy, lim=ax===0?nx:ax===1?ny:nz;
+    for(let z=0;z<nz;z++) for(let y=0;y<ny;y++){ const row=nx*y+nxy*z;
+      for(let x=0;x<nx;x++){ const i=row+x, cc=ax===0?x:ax===1?y:z;
+        const l=cc>0?S[i-st]:S[i], rr=cc<lim-1?S[i+st]:S[i];
+        T[i]=(l+2*S[i]+rr+2)>>2; } }
+    const sw=S; S=T; T=sw;
+  }
+  P(72,'Gerando superfície sólida');
+  const iso=127.5;
+  const CO=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]];
+  const TETS=[[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]];
+  const offs=CO.map(c=>c[0]+c[1]*nx+c[2]*nxy);
+  const verts=[], tris=[], emap=new Map();
+  const cv=new Float64Array(8), gi=new Float64Array(8);
+  function ev(ka,kb,x,y,z){
+    const i=gi[ka], j=gi[kb], key=i<j?i*N+j:j*N+i;
+    let id=emap.get(key); if(id!==undefined) return id;
+    const t=(iso-cv[ka])/(cv[kb]-cv[ka]);
+    const A=CO[ka],B=CO[kb];
+    id=verts.length/3;
+    verts.push(ox+(x+A[0]+t*(B[0]-A[0])+0.5)*h, oy+(y+A[1]+t*(B[1]-A[1])+0.5)*h, oz+(z+A[2]+t*(B[2]-A[2])+0.5)*h);
+    emap.set(key,id); return id;
+  }
+  function emit(p,q,r,ins,outs){
+    let dx=0,dy=0,dz=0;
+    for(const k of outs){ dx+=CO[k][0]/outs.length; dy+=CO[k][1]/outs.length; dz+=CO[k][2]/outs.length; }
+    for(const k of ins){ dx-=CO[k][0]/ins.length; dy-=CO[k][1]/ins.length; dz-=CO[k][2]/ins.length; }
+    const ux=verts[3*q]-verts[3*p],uy=verts[3*q+1]-verts[3*p+1],uz=verts[3*q+2]-verts[3*p+2];
+    const vx=verts[3*r]-verts[3*p],vy=verts[3*r+1]-verts[3*p+1],vz=verts[3*r+2]-verts[3*p+2];
+    const d=(uy*vz-uz*vy)*dx+(uz*vx-ux*vz)*dy+(ux*vy-uy*vx)*dz;
+    if(d>=0) tris.push(p,q,r); else tris.push(p,r,q);
+  }
+  for(let z=0;z<nz-1;z++){
+    if(z%8===0) P(72+16*z/nz,'Gerando superfície sólida');
+    for(let y=0;y<ny-1;y++) for(let x=0;x<nx-1;x++){
+      const base=x+nx*y+nxy*z;
+      let above=0;
+      for(let k=0;k<8;k++){ cv[k]=S[base+offs[k]]; gi[k]=base+offs[k]; if(cv[k]>iso) above++; }
+      if(above===0||above===8) continue;
+      for(const tet of TETS){
+        const ins=[],outs=[];
+        for(const k of tet) (cv[k]>iso?ins:outs).push(k);
+        if(ins.length===0||ins.length===4) continue;
+        if(ins.length===1){ emit(ev(ins[0],outs[0],x,y,z),ev(ins[0],outs[1],x,y,z),ev(ins[0],outs[2],x,y,z),ins,outs); }
+        else if(ins.length===3){ emit(ev(outs[0],ins[0],x,y,z),ev(outs[0],ins[1],x,y,z),ev(outs[0],ins[2],x,y,z),ins,outs); }
+        else{
+          const ac=ev(ins[0],outs[0],x,y,z), ad=ev(ins[0],outs[1],x,y,z), bd=ev(ins[1],outs[1],x,y,z), bc=ev(ins[1],outs[0],x,y,z);
+          emit(ac,ad,bd,ins,outs); emit(ac,bd,bc,ins,outs);
+        }
+      }
+    }
+  }
+  return {V:Float64Array.from(verts),F:Uint32Array.from(tris),h};
+}
+
+function taubin(V,F,iters){
+  if(iters<=0) return;
+  const nv=V.length/3, deg=new Uint32Array(nv+1);
+  for(let i=0;i<F.length;i+=3){ for(let k=0;k<3;k++){ deg[F[i+k]]+=2; } }
+  const start=new Uint32Array(nv+1); for(let i=0;i<nv;i++) start[i+1]=start[i]+deg[i];
+  const fill=start.slice(0,nv), adj=new Uint32Array(start[nv]);
+  for(let i=0;i<F.length;i+=3) for(let k=0;k<3;k++){ const a=F[i+k],b=F[i+(k+1)%3]; adj[fill[a]++]=b; adj[fill[b]++]=a; }
+  const T=new Float64Array(V.length);
+  for(let it=0;it<iters;it++) for(const lam of [0.5,-0.53]){
+    for(let v=0;v<nv;v++){
+      const s=start[v],e=start[v+1]; if(e===s){ T[3*v]=V[3*v];T[3*v+1]=V[3*v+1];T[3*v+2]=V[3*v+2]; continue; }
+      let x=0,y=0,z=0; for(let j=s;j<e;j++){ const u=3*adj[j]; x+=V[u]; y+=V[u+1]; z+=V[u+2]; }
+      const n=e-s;
+      T[3*v]=V[3*v]+lam*(x/n-V[3*v]); T[3*v+1]=V[3*v+1]+lam*(y/n-V[3*v+1]); T[3*v+2]=V[3*v+2]+lam*(z/n-V[3*v+2]);
+    }
+    V.set(T);
+  }
+}
+
+/* simplificação por métrica quádrica (preserva manifold via condição de link) */
+function simplify(V,F,maxErr,onProg){
+  const nv=V.length/3, m=F.length/3;
+  const P=Float64Array.from(V), FF=Int32Array.from(F), alive=new Uint8Array(m).fill(1);
+  const Q=new Float64Array(nv*10), ver=new Int32Array(nv), dead=new Uint8Array(nv);
+  const vf=new Array(nv); for(let i=0;i<nv;i++) vf[i]=[];
+  for(let f=0;f<m;f++){
+    const a=FF[3*f],b=FF[3*f+1],c=FF[3*f+2];
+    vf[a].push(f); vf[b].push(f); vf[c].push(f);
+    const ux=P[3*b]-P[3*a],uy=P[3*b+1]-P[3*a+1],uz=P[3*b+2]-P[3*a+2];
+    const wx=P[3*c]-P[3*a],wy=P[3*c+1]-P[3*a+1],wz=P[3*c+2]-P[3*a+2];
+    let nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx; const l=Math.hypot(nx,ny,nz);
+    if(l<1e-20) continue; const w=l/2; nx/=l; ny/=l; nz/=l;
+    const d=-(nx*P[3*a]+ny*P[3*a+1]+nz*P[3*a+2]);
+    const q=[nx*nx,nx*ny,nx*nz,nx*d,ny*ny,ny*nz,ny*d,nz*nz,nz*d,d*d];
+    for(const v of [a,b,c]) for(let k=0;k<10;k++) Q[10*v+k]+=q[k]*w;
+  }
+  // heap
+  let cap=1<<20, cost=new Float64Array(cap), pos=new Float64Array(cap*3), eu=new Int32Array(cap*4), cnt=0;
+  let heap=new Int32Array(cap), hn=0;
+  function grow(){ cap*=2; const c2=new Float64Array(cap); c2.set(cost); cost=c2; const p2=new Float64Array(cap*3); p2.set(pos); pos=p2;
+    const e2=new Int32Array(cap*4); e2.set(eu); eu=e2; const h2=new Int32Array(cap); h2.set(heap); heap=h2; }
+  function hpush(id){ let i=hn++; heap[i]=id; while(i>0){ const p=(i-1)>>1; if(cost[heap[p]]<=cost[heap[i]])break; const t=heap[p];heap[p]=heap[i];heap[i]=t; i=p; } }
+  function hpop(){ const top=heap[0]; heap[0]=heap[--hn]; let i=0;
+    for(;;){ const l=2*i+1,r=l+1; let s=i; if(l<hn&&cost[heap[l]]<cost[heap[s]])s=l; if(r<hn&&cost[heap[r]]<cost[heap[s]])s=r; if(s===i)break; const t=heap[s];heap[s]=heap[i];heap[i]=t; i=s; }
+    return top; }
+  const q=new Float64Array(10);
+  function qerr(x,y,z){ return q[0]*x*x+2*q[1]*x*y+2*q[2]*x*z+2*q[3]*x+q[4]*y*y+2*q[5]*y*z+2*q[6]*y+q[7]*z*z+2*q[8]*z+q[9]; }
+  function pushEdge(u,v){
+    for(let k=0;k<10;k++) q[k]=Q[10*u+k]+Q[10*v+k];
+    const a=q[0],b=q[1],c=q[2],d=q[4],e=q[5],f=q[7];
+    const det=a*(d*f-e*e)-b*(b*f-c*e)+c*(b*e-c*d);
+    let x,y,z,best;
+    const mx=(P[3*u]+P[3*v])/2,my=(P[3*u+1]+P[3*v+1])/2,mz=(P[3*u+2]+P[3*v+2])/2;
+    if(Math.abs(det)>1e-12){
+      const r0=-q[3],r1=-q[6],r2=-q[8];
+      x=(r0*(d*f-e*e)-b*(r1*f-e*r2)+c*(r1*e-d*r2))/det;
+      y=(a*(r1*f-e*r2)-r0*(b*f-c*e)+c*(b*r2-r1*c))/det;
+      z=(a*(d*r2-r1*e)-b*(b*r2-r1*c)+r0*(b*e-c*d))/det;
+      const el=Math.hypot(P[3*u]-P[3*v],P[3*u+1]-P[3*v+1],P[3*u+2]-P[3*v+2]);
+      if(Math.hypot(x-mx,y-my,z-mz)>2*el){ x=mx;y=my;z=mz; }
+      best=qerr(x,y,z);
+    } else { best=Infinity; }
+    for(const [px,py,pz] of [[P[3*u],P[3*u+1],P[3*u+2]],[P[3*v],P[3*v+1],P[3*v+2]],[mx,my,mz]]){
+      const e2=qerr(px,py,pz); if(e2<best){best=e2;x=px;y=py;z=pz;} }
+    if(cnt>=cap) grow();
+    const id=cnt++; cost[id]=Math.max(0,best); pos[3*id]=x;pos[3*id+1]=y;pos[3*id+2]=z;
+    eu[4*id]=u;eu[4*id+1]=v;eu[4*id+2]=ver[u];eu[4*id+3]=ver[v];
+    hpush(id);
+  }
+  for(let f=0;f<m;f++) for(let k=0;k<3;k++){ const a=FF[3*f+k],b=FF[3*f+(k+1)%3]; if(a<b) pushEdge(a,b); }
+  const markN=new Int32Array(nv).fill(-1); let stamp=0;
+  function flipOK(w,other,x,y,z){
+    for(const f of vf[w]){ if(!alive[f]) continue;
+      const a=FF[3*f],b=FF[3*f+1],c=FF[3*f+2];
+      if(a===other||b===other||c===other) continue;
+      const pa=a===w?[x,y,z]:[P[3*a],P[3*a+1],P[3*a+2]], pb=b===w?[x,y,z]:[P[3*b],P[3*b+1],P[3*b+2]], pc=c===w?[x,y,z]:[P[3*c],P[3*c+1],P[3*c+2]];
+      const o1x=P[3*b]-P[3*a],o1y=P[3*b+1]-P[3*a+1],o1z=P[3*b+2]-P[3*a+2], o2x=P[3*c]-P[3*a],o2y=P[3*c+1]-P[3*a+1],o2z=P[3*c+2]-P[3*a+2];
+      const onx=o1y*o2z-o1z*o2y, ony=o1z*o2x-o1x*o2z, onz=o1x*o2y-o1y*o2x;
+      const n1x=pb[0]-pa[0],n1y=pb[1]-pa[1],n1z=pb[2]-pa[2], n2x=pc[0]-pa[0],n2y=pc[1]-pa[1],n2z=pc[2]-pa[2];
+      const nnx=n1y*n2z-n1z*n2y, nny=n1z*n2x-n1x*n2z, nnz=n1x*n2y-n1y*n2x;
+      const ln=Math.hypot(nnx,nny,nnz), lo=Math.hypot(onx,ony,onz);
+      if(ln<1e-14) return false;
+      if(onx*nnx+ony*nny+onz*nnz < 0.5*ln*lo) return false;
+    }
+    return true;
+  }
+  let aliveCount=m, done=0;
+  while(hn>0){
+    const id=hpop();
+    if(cost[id]>maxErr) break;
+    const u=eu[4*id], v=eu[4*id+1];
+    if(dead[u]||dead[v]||ver[u]!==eu[4*id+2]||ver[v]!==eu[4*id+3]) continue;
+    // condição de link
+    stamp++;
+    for(const f of vf[u]) if(alive[f]) for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==u) markN[w]=stamp; }
+    let common=0, shared=0, valU=0, valV=0;
+    for(const f of vf[u]) if(alive[f]) valU++;
+    for(const f of vf[v]) if(alive[f]){
+      valV++;
+      let hasU=false; for(let k=0;k<3;k++) if(FF[3*f+k]===u) hasU=true;
+      if(hasU) shared++;
+      for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==v&&w!==u&&markN[w]===stamp){ markN[w]=-2-stamp; common++; } }
+    }
+    if(shared!==2||common!==2||valU+valV-4>14) continue;
+    const x=pos[3*id],y=pos[3*id+1],z=pos[3*id+2];
+    if(!flipOK(u,v,x,y,z)||!flipOK(v,u,x,y,z)) continue;
+    // aplica
+    for(const f of vf[v]){ if(!alive[f]) continue;
+      let hasU=false; for(let k=0;k<3;k++) if(FF[3*f+k]===u) hasU=true;
+      if(hasU){ alive[f]=0; aliveCount--; continue; }
+      for(let k=0;k<3;k++) if(FF[3*f+k]===v) FF[3*f+k]=u;
+      vf[u].push(f);
+    }
+    vf[u]=vf[u].filter(f=>alive[f]); vf[v]=[];
+    for(let k=0;k<10;k++) Q[10*u+k]+=Q[10*v+k];
+    P[3*u]=x;P[3*u+1]=y;P[3*u+2]=z; ver[u]++; dead[v]=1;
+    stamp++; const nb=[];
+    for(const f of vf[u]) for(let k=0;k<3;k++){ const w=FF[3*f+k]; if(w!==u&&markN[w]!==stamp){ markN[w]=stamp; nb.push(w); } }
+    for(const w of nb) pushEdge(Math.min(u,w),Math.max(u,w));
+    if(++done%50000===0&&onProg) onProg(1-aliveCount/m);
+    if(hn>cap-16) {} 
+  }
+  // compacta
+  const remap=new Int32Array(nv).fill(-1), outV=[], outF=[];
+  for(let f=0;f<m;f++){ if(!alive[f]) continue;
+    for(let k=0;k<3;k++){ const v=FF[3*f+k]; if(remap[v]<0){ remap[v]=outV.length/3; outV.push(P[3*v],P[3*v+1],P[3*v+2]); } outF.push(remap[v]); } }
+  return {V:Float64Array.from(outV),F:Uint32Array.from(outF)};
+}
+
+function offsetInward(V,F,d){
+  const N=new Float64Array(V.length);
+  for(let i=0;i<F.length;i+=3){
+    const a=3*F[i],b=3*F[i+1],c=3*F[i+2];
+    const ux=V[b]-V[a],uy=V[b+1]-V[a+1],uz=V[b+2]-V[a+2], vx=V[c]-V[a],vy=V[c+1]-V[a+1],vz=V[c+2]-V[a+2];
+    const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+    for(const p of [a,b,c]){ N[p]+=nx; N[p+1]+=ny; N[p+2]+=nz; }
+  }
+  for(let p=0;p<V.length;p+=3){ const l=Math.hypot(N[p],N[p+1],N[p+2])||1;
+    V[p]-=d*N[p]/l; V[p+1]-=d*N[p+1]/l; V[p+2]-=d*N[p+2]/l; }
+}
+
+function toSoup(V,F){
+  const s=new Float32Array(F.length*3);
+  for(let i=0;i<F.length;i++){ const v=3*F[i]; s[3*i]=V[v]; s[3*i+1]=V[v+1]; s[3*i+2]=V[v+2]; }
+  return s;
+}
+
+function repairSoup(soup,o){
+  const log={};
+  P(3,'Soldando vértices');
+  const bb=bboxSoup(soup), tol=tolFor(bb);
+  let {V,F}=weld(soup,tol);
+  const c=cleanFaces(V,F,tol); F=c.F;
+  log.duplicates=c.duplicates; log.degenerate=c.removedDegenerate;
+  P(12,'Corrigindo orientação das faces');
+  let nv=V.length/3;
+  let E=buildEdges(F,nv);
+  log.flipped=orient(F,E,nv);
+  outward(V,F,E);
+  if(o.fillHoles||o.mode==='voxel'){
+    P(22,'Fechando furos');
+    log.holes=fillHoles(V,F,E,nv);
+    nv=V.length/3; E=buildEdges(F,nv);
+    orient(F,E,nv); outward(V,F,E);
+  }
+  P(32,'Analisando cascas');
+  const comps=components(F,E,F.length/3);
+  const sh=shellInfo(V,F,comps);
+  const maxAbs=sh.info.reduce((m,s)=>Math.max(m,s.abs),0);
+  const drop=new Uint8Array(F.length/3);
+  log.fragments=0; log.internal=0;
+  sh.info.forEach((s,i)=>{
+    if(o.removeFragments&&(s.abs<maxAbs*2e-4||s.faces.length<4)&&sh.info.length>1){ log.fragments++; for(const f of s.faces)drop[f]=1; }
+    else if((o.removeInternal||o.mode==='voxel')&&sh.internal.has(i)){ log.internal++; for(const f of s.faces)drop[f]=1; }
+  });
+  const F2=[]; for(let f=0;f<drop.length;f++) if(!drop[f]) F2.push(F[3*f],F[3*f+1],F[3*f+2]);
+  let out;
+  if(o.mode==='voxel'){
+    const r=voxelSolid(V,F2,o);
+    P(90,'Suavizando');
+    taubin(r.V,r.F,o.smooth);
+    if(o.compensate) offsetInward(r.V,r.F,0.5*r.h);
+    if(o.simplify){
+      P(91,'Otimizando malha');
+      const s=simplify(r.V,r.F,Math.pow(o.simplifyTol*r.h,2),fr=>P(91+3*fr,'Otimizando malha'));
+      r.V=s.V; r.F=s.F;
+    }
+    log.voxel=r.h;
+    out=toSoup(r.V,r.F);
+  } else out=toSoup(V,F2);
+  P(94,'Verificando resultado');
+  const an=analyzeSoup(out);
+  return {soup:out,analysis:an,log};
+}
+
+if(typeof self!=='undefined'&&typeof self.postMessage==='function'&&typeof window==='undefined'){
+  progressFn=(pct,msg)=>self.postMessage({type:'progress',pct,msg});
+  self.onmessage=e=>{
+    const d=e.data;
+    try{
+      if(d.cmd==='analyze'){
+        const an=analyzeSoup(d.soup);
+        self.postMessage({type:'analyzed',id:d.id,analysis:an},[an.segB.buffer,an.segN.buffer]);
+      } else if(d.cmd==='repair'){
+        const r=repairSoup(d.soup,d.opts);
+        self.postMessage({type:'repaired',id:d.id,soup:r.soup,analysis:r.analysis,log:r.log},[r.soup.buffer,r.analysis.segB.buffer,r.analysis.segN.buffer]);
+      }
+    }catch(err){ self.postMessage({type:'error',id:d.id,message:String(err&&err.message||err)}); }
+  };
+}
+if(typeof module!=='undefined') module.exports={analyzeSoup,repairSoup};
+</script>
+<script>/* Modelo de exemplo com falhas: cubo 40 mm com furo, normais invertidas, faces duplicadas, cavidade interna e fragmento solto */
+function makeSampleSoup(){
+  const T=[];
+  const S=40, n=6;
+  const faces=[
+    [[0,0,0],[0,S,0],[S,0,0]], [[0,0,S],[S,0,0],[0,S,0]],
+    [[0,0,0],[S,0,0],[0,0,S]], [[0,S,0],[0,0,S],[S,0,0]],
+    [[0,0,0],[0,0,S],[0,S,0]], [[S,0,0],[0,S,0],[0,0,S]]
+  ];
+  faces.forEach(([o,u,v],fi)=>{
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+      const p=(a,b)=>[o[0]+u[0]*a/n+v[0]*b/n,o[1]+u[1]*a/n+v[1]*b/n,o[2]+u[2]*a/n+v[2]*b/n];
+      const p00=p(i,j),p10=p(i+1,j),p11=p(i+1,j+1),p01=p(i,j+1);
+      if(fi===1&&((i===2&&j===2)||(i===3&&j===2))) continue;      // furo no topo
+      T.push([p00,p10,p11]);
+      if(!(fi===1&&i===2&&j===3)) T.push([p00,p11,p01]);
+    }
+  });
+  // normais invertidas
+  for(let k=5;k<T.length;k+=23){ const t=T[k]; T[k]=[t[0],t[2],t[1]]; }
+  // duplicadas
+  for(let k=0;k<4;k++) T.push(T[k*9+1].slice());
+  // cavidade interna (esfera) — casca fechada dentro do cubo
+  const ico=icosphere(2); const C=[20,20,18], R=9;
+  for(const t of ico) T.push(t.map(v=>[C[0]+v[0]*R,C[1]+v[1]*R,C[2]+v[2]*R]));
+  // fragmento solto minúsculo
+  const q=[[46,2,0],[46.6,2,0],[46,2.6,0],[46,2,0.6]];
+  T.push([q[0],q[2],q[1]],[q[0],q[1],q[3]],[q[1],q[2],q[3]],[q[0],q[3],q[2]]);
+  const s=new Float32Array(T.length*9);
+  T.forEach((t,i)=>{ for(let a=0;a<3;a++) for(let b=0;b<3;b++) s[9*i+3*a+b]=t[a][b]; });
+  return s;
+}
+function icosphere(level){
+  const t=(1+Math.sqrt(5))/2;
+  let V=[[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]];
+  let Fc=[[0,11,5],[0,5,1],[0,1,7],[0,7,10],[0,10,11],[1,5,9],[5,11,4],[11,10,2],[10,7,6],[7,1,8],[3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],[4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]];
+  const nrm=v=>{const l=Math.hypot(v[0],v[1],v[2]);return [v[0]/l,v[1]/l,v[2]/l];};
+  V=V.map(nrm);
+  for(let l=0;l<level;l++){
+    const cache=new Map(), F2=[];
+    const mid=(a,b)=>{const k=a<b?a+'_'+b:b+'_'+a; if(cache.has(k))return cache.get(k);
+      const v=nrm([(V[a][0]+V[b][0])/2,(V[a][1]+V[b][1])/2,(V[a][2]+V[b][2])/2]); V.push(v); cache.set(k,V.length-1); return V.length-1;};
+    for(const [a,b,c] of Fc){ const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a); F2.push([a,ab,ca],[b,bc,ab],[c,ca,bc],[ab,bc,ca]); }
+    Fc=F2;
+  }
+  return Fc.map(f=>f.map(i=>V[i]));
+}
+if(typeof module!=='undefined') module.exports={makeSampleSoup};
+</script>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const state={name:'',orig:null,origAn:null,rep:null,repAn:null,log:null,view:'orig',busy:false,frameKey:0};
+
+/* ---------- worker ---------- */
+let worker=null, jobId=0; const pending=new Map();
+try{
+  const url=URL.createObjectURL(new Blob([$('workerSrc').textContent],{type:'text/javascript'}));
+  worker=new Worker(url);
+  worker.onmessage=e=>{
+    const d=e.data;
+    if(d.type==='progress'){ setProgress(d.pct,d.msg); return; }
+    const p=pending.get(d.id); if(!p) return; pending.delete(d.id);
+    if(d.type==='error') p.reject(new Error(d.message)); else p.resolve(d);
+  };
+  worker.onerror=e=>{ for(const p of pending.values()) p.reject(new Error(e.message||'Falha no processamento')); pending.clear(); };
+}catch(err){ worker=null; }
+function run(cmd,soup,opts){
+  return new Promise((resolve,reject)=>{
+    if(!worker){ reject(new Error('Seu navegador bloqueou o processamento em segundo plano.')); return; }
+    const id=++jobId; pending.set(id,{resolve,reject});
+    const copy=new Float32Array(soup);
+    worker.postMessage({cmd,id,soup:copy,opts},[copy.buffer]);
+  });
+}
+
+/* ---------- STL I/O ---------- */
+function parseSTL(buf){
+  const dv=new DataView(buf), len=buf.byteLength;
+  let binary=false;
+  if(len>=84){ const n=dv.getUint32(80,true); if(84+n*50===len) binary=true; }
+  const head=new TextDecoder().decode(new Uint8Array(buf,0,Math.min(len,512)));
+  if(!binary && !/^\s*solid/i.test(head) && len>=84) binary=true;
+  let out=[];
+  if(binary){
+    const n=Math.min(dv.getUint32(80,true),Math.floor((len-84)/50));
+    const s=new Float32Array(n*9); let k=0, bad=0;
+    for(let i=0;i<n;i++){
+      const o=84+i*50+12; let ok=true;
+      for(let j=0;j<9;j++){ const v=dv.getFloat32(o+4*j,true); if(!isFinite(v)) ok=false; s[k+j]=v; }
+      if(ok) k+=9; else bad++;
+    }
+    return {soup:s.subarray(0,k),bad};
+  }
+  const txt=new TextDecoder().decode(buf);
+  const re=/vertex\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)\s+([-+0-9.eE]+)/g; let m;
+  while((m=re.exec(txt))) out.push(+m[1],+m[2],+m[3]);
+  const n=Math.floor(out.length/9);
+  const s=new Float32Array(n*9); let k=0,bad=0;
+  for(let i=0;i<n;i++){ let ok=true; for(let j=0;j<9;j++) if(!isFinite(out[9*i+j])) ok=false;
+    if(ok){ for(let j=0;j<9;j++) s[k+j]=out[9*i+j]; k+=9; } else bad++; }
+  return {soup:s.subarray(0,k),bad};
+}
+function toSTL(soup,label){
+  const n=soup.length/9, buf=new ArrayBuffer(84+n*50), dv=new DataView(buf);
+  const h=('Reparador de STL - '+label).slice(0,79);
+  for(let i=0;i<h.length;i++) dv.setUint8(i,h.charCodeAt(i)&127);
+  dv.setUint32(80,n,true);
+  for(let i=0;i<n;i++){
+    const s=9*i, o=84+50*i;
+    const ux=soup[s+3]-soup[s],uy=soup[s+4]-soup[s+1],uz=soup[s+5]-soup[s+2];
+    const vx=soup[s+6]-soup[s],vy=soup[s+7]-soup[s+1],vz=soup[s+8]-soup[s+2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const l=Math.hypot(nx,ny,nz)||1;
+    dv.setFloat32(o,nx/l,true); dv.setFloat32(o+4,ny/l,true); dv.setFloat32(o+8,nz/l,true);
+    for(let j=0;j<9;j++) dv.setFloat32(o+12+4*j,soup[s+j],true);
+  }
+  return buf;
+}
+/* zip sem compressão (o visualizador do claude.ai só libera certas extensões) */
+const CRC=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(u8){ let c=0xFFFFFFFF; for(let i=0;i<u8.length;i++) c=CRC[(c^u8[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function makeZip(name,data){
+  const u8=new Uint8Array(data), nm=new TextEncoder().encode(name), crc=crc32(u8), sz=u8.length;
+  const d=new Date(), dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(), tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  const lh=new DataView(new ArrayBuffer(30));
+  lh.setUint32(0,0x04034b50,true); lh.setUint16(4,20,true); lh.setUint16(6,0x0800,true); lh.setUint16(8,0,true);
+  lh.setUint16(10,tm,true); lh.setUint16(12,dt,true); lh.setUint32(14,crc,true); lh.setUint32(18,sz,true); lh.setUint32(22,sz,true);
+  lh.setUint16(26,nm.length,true); lh.setUint16(28,0,true);
+  const ch=new DataView(new ArrayBuffer(46));
+  ch.setUint32(0,0x02014b50,true); ch.setUint16(4,20,true); ch.setUint16(6,20,true); ch.setUint16(8,0x0800,true); ch.setUint16(10,0,true);
+  ch.setUint16(12,tm,true); ch.setUint16(14,dt,true); ch.setUint32(16,crc,true); ch.setUint32(20,sz,true); ch.setUint32(24,sz,true);
+  ch.setUint16(28,nm.length,true); ch.setUint32(42,0,true);
+  const cdOff=30+nm.length+sz, cdSize=46+nm.length;
+  const end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true); end.setUint16(8,1,true); end.setUint16(10,1,true); end.setUint32(12,cdSize,true); end.setUint32(16,cdOff,true);
+  return new Blob([lh.buffer,nm,u8,ch.buffer,nm,end.buffer],{type:'application/zip'});
+}
+
+/* ---------- interface ---------- */
+const fmtInt=n=>Math.round(n).toLocaleString('pt-BR');
+const fmt1=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmt2=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+function toast(t){ const el=$('toast'); el.textContent=t; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,3800); }
+function setProgress(p,m){ $('barFill').style.width=Math.max(2,Math.min(100,p))+'%'; $('progMsg').textContent=m+'…'; }
+function mode(){ return $('modeVoxel').checked?'voxel':'precise'; }
+function opts(){ return {mode:mode(),res:+$('res').value,smooth:+$('smooth').value,simplify:$('simplify').checked,simplifyTol:0.1,compensate:$('compensate').checked,
+  fillHoles:$('fillHoles').checked,removeInternal:$('removeInternal').checked,removeFragments:$('removeFragments').checked}; }
+function updateOpts(){
+  const v=mode()==='voxel'; $('voxelOpts').hidden=!v; $('preciseOpts').hidden=v;
+  const d=state.origAn?Math.max(...state.origAn.stats.dims):0, r=+$('res').value;
+  $('resOut').textContent=d?`${r} · voxel ${fmt2(d/r)} mm`:String(r);
+  const sm=+$('smooth').value; $('smoothOut').textContent=sm===0?'desligada':sm+' passadas';
+}
+
+const ROWS=[
+  ['boundaryEdges','Bordas abertas',v=>v>0?'bad':'good'],
+  ['holes','Furos',v=>v>0?'bad':'good'],
+  ['nonManifold','Arestas não-manifold',v=>v>0?'bad':'good'],
+  ['inconsistent','Normais invertidas',v=>v>0?'bad':'good'],
+  ['internal','Cascas internas (vazios)',v=>v>0?'bad':'good'],
+  ['shells','Corpos separados',v=>v>1?'warn':'good'],
+  ['duplicates','Faces duplicadas',v=>v>0?'warn':'good'],
+  ['degenerate','Faces degeneradas',v=>v>0?'warn':'good'],
+  ['tris','Triângulos',()=>'dim'],
+  ['volume','Volume (cm³)',()=>'dim',v=>fmt1(Math.abs(v)/1000)],
+  ['dims','Medidas X·Y·Z (mm)',()=>'dim',v=>v.map(fmt1).join(' × ')],
+];
+function cell(an,row){
+  if(!an) return '<td class="num"><span class="pill dim">—</span></td>';
+  const v=an.stats[row[0]], cls=row[2](v), txt=row[3]?row[3](v):fmtInt(v);
+  return `<td class="num"><span class="pill ${cls}">${txt}</span></td>`;
+}
+function problems(an){ const s=an.stats; return (s.boundaryEdges>0)+(s.nonManifold>0)+(s.inconsistent>0)+(s.internal>0); }
+function renderReport(){
+  $('report').innerHTML=ROWS.map(r=>`<tr><td>${r[1]}</td>${cell(state.origAn,r)}${cell(state.repAn,r)}</tr>`).join('');
+  const an=state.repAn||state.origAn, v=$('verdict');
+  if(!an){ v.innerHTML=''; return; }
+  const p=problems(an), s=an.stats;
+  if(p===0&&s.shells<=1) v.innerHTML=`<div class="verdict ok"><div>${state.repAn?'Pronto para imprimir':'Malha já está íntegra'}<small>Sólido estanque, um corpo, sem vazios internos.</small></div></div>`;
+  else if(p===0) v.innerHTML=`<div class="verdict ok"><div>Estanque, com ${s.shells} corpos<small>Imprimível. Use “Solidificar” para fundir corpos que se sobrepõem.</small></div></div>`;
+  else v.innerHTML=`<div class="verdict no"><div>${p} tipo${p>1?'s':''} de falha encontrado${p>1?'s':''}<small>${state.repAn?'Tente o modo “Solidificar” ou aumente a resolução.':'Escolha um modo e clique em Reparar modelo.'}</small></div></div>`;
+  const L=state.log, ul=$('log');
+  if(L){
+    const items=[];
+    if(L.duplicates) items.push(`${fmtInt(L.duplicates)} faces duplicadas removidas`);
+    if(L.degenerate) items.push(`${fmtInt(L.degenerate)} faces degeneradas removidas`);
+    if(L.flipped) items.push(`${fmtInt(L.flipped)} faces reorientadas`);
+    if(L.holes) items.push(`${fmtInt(L.holes)} furo${L.holes>1?'s':''} fechado${L.holes>1?'s':''}`);
+    if(L.internal) items.push(`${fmtInt(L.internal)} casca${L.internal>1?'s':''} interna${L.internal>1?'s':''} eliminada${L.internal>1?'s':''}`);
+    if(L.fragments) items.push(`${fmtInt(L.fragments)} fragmento${L.fragments>1?'s':''} solto${L.fragments>1?'s':''} descartado${L.fragments>1?'s':''}`);
+    if(L.voxel) items.push(`Reconstruído como sólido maciço (voxel de ${fmt2(L.voxel)} mm)`);
+    if(L.time) items.push(`Concluído em ${fmt1(L.time/1000)} s`);
+    ul.innerHTML=items.map(t=>`<li>${t}</li>`).join(''); ul.hidden=!items.length;
+  } else ul.hidden=true;
+}
+
+async function loadSoup(soup,name,size){
+  state.name=name; state.orig=soup; state.origAn=null; state.rep=null; state.repAn=null; state.log=null;
+  $('fileName').textContent=name; $('fileSize').textContent=size?`${fmt1(size/1048576)} MB · ${fmtInt(soup.length/9)} triângulos`:`${fmtInt(soup.length/9)} triângulos`;
+  $('dlBtn').disabled=true; $('dlNote').textContent='Repare o modelo para liberar o download.';
+  $('vRep').disabled=true; setView('orig',true);
+  renderReport(); busy(true,'Analisando malha');
+  try{ const r=await run('analyze',soup); state.origAn=r.analysis; }
+  catch(err){ toast('Não consegui analisar: '+err.message); }
+  busy(false); updateOpts(); renderReport(); show(true);
+}
+async function loadFile(f){
+  if(!f) return;
+  if(!/\.stl$/i.test(f.name)){ toast('Escolha um arquivo .stl'); return; }
+  try{
+    const buf=await f.arrayBuffer(); const {soup,bad}=parseSTL(buf);
+    if(!soup.length){ toast('Este arquivo não tem triângulos legíveis.'); return; }
+    if(bad) toast(`${bad} triângulos corrompidos foram ignorados.`);
+    await loadSoup(soup,f.name,f.size);
+  }catch(err){ toast('Não consegui ler o arquivo: '+err.message); }
+}
+function busy(on,msg){
+  state.busy=on; $('runBtn').disabled=on; $('prog').hidden=!on;
+  if(on) setProgress(1,msg||'Processando');
+}
+async function repair(){
+  if(!state.orig||state.busy) return;
+  const t0=performance.now(); busy(true,'Iniciando');
+  try{
+    const r=await run('repair',state.orig,opts());
+    state.rep=r.soup; state.repAn=r.analysis; state.log=Object.assign({},r.log,{time:performance.now()-t0});
+    $('vRep').disabled=false; setView('rep');
+    $('dlBtn').disabled=false;
+    $('dlNote').textContent=zipMode?'No claude.ai o arquivo vem compactado em .zip: extraia e abra o .stl no Creality Print.':'Abra o .stl no Creality Print e fatie normalmente.';
+  }catch(err){ toast('O reparo falhou: '+err.message); }
+  busy(false); renderReport();
+}
+const zipMode=!!(window.claude&&typeof window.claude.use==='function');
+async function download(){
+  if(!state.rep) return;
+  const base=(state.name||'modelo').replace(/\.stl$/i,'')+'_reparado';
+  const stl=toSTL(state.rep,base);
+  if(zipMode){
+    let dl=null; try{ dl=await window.claude.use('downloads'); }catch(e){}
+    if(!dl){ toast('Download indisponível nesta visualização.'); return; }
+    try{ await dl.save({filename:base+'.zip',data:makeZip(base+'.stl',stl)}); toast('Arquivo salvo.'); }
+    catch(e){ if(e&&e.code==='declined') return; toast(e&&e.code==='rate_limited'?'Aguarde um instante e tente de novo.':'Não foi possível salvar: '+(e&&e.message||e)); }
+    return;
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([stl],{type:'model/stl'})); a.download=base+'.stl';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+
+/* ---------- visualização 3D ---------- */
+let R=null;
+function cssColor(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim()||'#888'; }
+function initViewer(){
+  if(typeof THREE==='undefined'||!THREE.OrbitControls){ const m=$('viewerMsg'); m.hidden=false; m.textContent='A visualização 3D não carregou. O reparo e o download continuam funcionando.'; return; }
+  const canvas=$('cv');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); renderer.localClippingEnabled=true;
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(38,1,0.1,1e7); camera.up.set(0,0,1);
+  const controls=new THREE.OrbitControls(camera,canvas); controls.enableDamping=true; controls.dampingFactor=0.12;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x445566,0.75));
+  const dir=new THREE.DirectionalLight(0xffffff,0.7); camera.add(dir); dir.position.set(0.4,0.8,0.2); scene.add(camera);
+  const group=new THREE.Group(); scene.add(group);
+  const plane=new THREE.Plane(new THREE.Vector3(0,0,-1),1e9);
+  R={renderer,scene,camera,controls,group,plane,grid:null,bounds:null};
+  const resize=()=>{ const st=$('stage'), w=st.clientWidth, h=st.clientHeight; if(!w||!h) return; renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix(); };
+  new ResizeObserver(resize).observe($('stage')); resize();
+  (function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); })();
+  applyTheme();
+}
+function applyTheme(){
+  if(!R) return;
+  R.scene.background=new THREE.Color(cssColor('--viewer'));
+  R.group.traverse(o=>{ if(o.userData.tok&&o.material) o.material.color.set(cssColor(o.userData.tok)); });
+  if(R.grid){ const c=new THREE.Color(cssColor('--gridc')); R.grid.material.color=c; }
+}
+function show(reframe){
+  if(!R) return;
+  const isRep=state.view==='rep'&&state.rep;
+  const soup=isRep?state.rep:state.orig, an=isRep?state.repAn:state.origAn;
+  while(R.group.children.length){ const c=R.group.children.pop(); c.geometry&&c.geometry.dispose(); c.material&&c.material.dispose(); }
+  if(!soup) return;
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(soup,3)); geo.computeVertexNormals(); geo.computeBoundingBox();
+  const front=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:cssColor('--model'),roughness:0.62,metalness:0.05,side:THREE.FrontSide,clippingPlanes:[R.plane],flatShading:soup.length/9<4000}));
+  front.userData.tok='--model';
+  const back=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:cssColor('--cut'),side:THREE.BackSide,clippingPlanes:[R.plane]}));
+  back.userData.tok='--cut';
+  R.group.add(front,back);
+  if(an&&$('showFaults').checked){
+    for(const [arr,tok] of [[an.segB,'--bad'],[an.segN,'--warn']]){
+      if(!arr||!arr.length) continue;
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(arr,3));
+      const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:cssColor(tok),depthTest:false,clippingPlanes:[R.plane]}));
+      l.renderOrder=5; l.userData.tok=tok; R.group.add(l);
+    }
+  }
+  const bb=geo.boundingBox; R.bounds=bb;
+  if(reframe){
+    const c=bb.getCenter(new THREE.Vector3()), size=bb.getSize(new THREE.Vector3()), r=Math.max(size.x,size.y,size.z)||1;
+    R.controls.target.copy(c);
+    R.camera.position.set(c.x+r*1.35,c.y-r*1.65,c.z+r*1.05); R.camera.near=r/200; R.camera.far=r*200; R.camera.updateProjectionMatrix();
+    if(R.grid){ R.scene.remove(R.grid); R.grid.geometry.dispose(); }
+    const gs=Math.pow(10,Math.ceil(Math.log10(r*2.2)));
+    R.grid=new THREE.GridHelper(gs,20); R.grid.rotation.x=Math.PI/2; R.grid.position.set(c.x,c.y,bb.min.z-r*0.002); R.scene.add(R.grid);
+    applyTheme();
+  }
+  applyCut();
+  const s=bb.getSize(new THREE.Vector3());
+  $('hud').textContent=`${isRep?'Reparado':'Original'} · ${fmtInt(soup.length/9)} tri · ${fmt1(s.x)}×${fmt1(s.y)}×${fmt1(s.z)} mm`;
+}
+function applyCut(){
+  if(!R||!R.bounds) return;
+  const t=+$('cut').value/100, z0=R.bounds.min.z, z1=R.bounds.max.z;
+  R.plane.constant=t>=1?1e9:z0+(z1-z0)*t;
+}
+function setView(v,skip){
+  state.view=v; $('vOrig').setAttribute('aria-pressed',String(v==='orig')); $('vRep').setAttribute('aria-pressed',String(v==='rep'));
+  if(!skip) show(false);
+}
+
+/* ---------- eventos ---------- */
+const drop=$('drop'), fi=$('fileInput');
+drop.addEventListener('click',()=>fi.click());
+drop.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
+fi.addEventListener('change',()=>{ loadFile(fi.files[0]); fi.value=''; });
+['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{ e.preventDefault(); if(t==='drop'||e.target===document.documentElement) drop.classList.remove('over'); }));
+document.addEventListener('drop',e=>{ const f=e.dataTransfer&&e.dataTransfer.files[0]; if(f) loadFile(f); });
+$('sampleBtn').addEventListener('click',()=>loadSoup(makeSampleSoup(),'exemplo_cubo_com_falhas.stl'));
+document.querySelectorAll('input[name="mode"]').forEach(r=>r.addEventListener('change',updateOpts));
+$('res').addEventListener('input',updateOpts); $('smooth').addEventListener('input',updateOpts);
+$('runBtn').addEventListener('click',repair);
+$('dlBtn').addEventListener('click',download);
+$('vOrig').addEventListener('click',()=>setView('orig'));
+$('vRep').addEventListener('click',()=>{ if(state.rep) setView('rep'); });
+$('showFaults').addEventListener('change',()=>show(false));
+$('cut').addEventListener('input',applyCut);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+initViewer(); updateOpts(); renderReport();
+loadSoup(makeSampleSoup(),'exemplo_cubo_com_falhas.stl');
+})();
+</script>
+
+</body></html>
