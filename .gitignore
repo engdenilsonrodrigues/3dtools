@@ -1,0 +1,7 @@
+# Pacotes de deploy
+*.zip
+# Python
+.venv/
+__pycache__/
+# Saídas geradas pelos scripts
+*/saida/
